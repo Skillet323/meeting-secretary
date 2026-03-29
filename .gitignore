@@ -1,0 +1,67 @@
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/*.pyc
+backend/*.pyo
+backend/*.pyd
+backend/.env
+backend/meeting_secretary.db
+backend/*.log
+backend/model_cache/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.vite
+
+# Data (audio files are large)
+backend/data/
+# Keep gold_annotations/ (small JSON annotations)
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary scripts in backend root (dev only)
+backend/check_*.py
+backend/test_*.py
+backend/debug_*.py
+backend/fix_*.py
+backend/simplify_*.py
+backend/reload_*.py
+backend/create_*.py
+backend/populate_*.py
+backend/recreate_*.py
+backend/curate_*.py
+backend/auto_*.py
+backend/prepare_*.py
+backend/load_*.py
+backend/evaluate_*.py
+backend/quick_*.py
+backend/rebuild_db.py
+
+# Local docs (keep only README.md)
+DATASET_GUIDE.md
+EVALUATION_PLAN.md
+DEPENDENCY_AUDIT.md
+STATUS.md
+READY.md
+HEARTBEAT.md
+TOOLS.md
+AGENTS.md
+SOUL.md
+USER.md
+IDENTITY.md
+BOOTSTRAP.md
+
+# Misc
+*.bak
+*.tmp

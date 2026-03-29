@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+.gitmodules
+
+# Tests
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Documentation (keep README)
+*.md
+!README.md
+docs/
+
+# Frontend node_modules (we rebuild in Docker)
+frontend/node_modules/
+frontend/package-lock.json
+
+# Backend
+backend/meeting_secretary.db
+backend/data/
+backend/uploads/
+
+# Misc
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example

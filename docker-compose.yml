@@ -1,0 +1,70 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      # For GPU support, use:
+      # dockerfile: Dockerfile.gpu
+      # build:
+      #   args:
+      #     BUILD_GPU: "true"
+    environment:
+      - DATABASE_URL=sqlite:///./meeting_secretary.db
+      - WHISPER_MODEL=small
+      - WHISPER_DEVICE=cuda  # Set to "cpu" if no GPU
+      - WHISPER_COMPUTE_TYPE=float16  # Use "int8" for CPU
+      - TASK_MODEL=google/flan-t5-large
+      - USE_OLLAMA=${USE_OLLAMA:-false}
+      - OLLAMA_MODEL=codellama:7b
+      - OLLAMA_URL=http://ollama:11434
+      - DIARIZATION_ENABLED=true
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # For GPU: uncomment the above and use Dockerfile.gpu
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+  # Optional: Ollama for LLM (free local)
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    # Uncomment for GPU
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+volumes:
+  ollama:
