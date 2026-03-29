@@ -49,6 +49,11 @@ def _match_name(participants: List[Participant], name_hint: Optional[str], thres
     return None
 
 
+def _find_participant_by_name(participants: List[Participant], name_hint: Optional[str]) -> Optional[Participant]:
+    """Compatibility wrapper for older tests/code paths."""
+    return _match_name(participants, name_hint)
+
+
 def _match_speaker_to_participant(speaker_label: str, participants: List[Participant]) -> Optional[Participant]:
     """
     Match speaker label (e.g. "Speaker 0", "SPEAKER_00") to participant.

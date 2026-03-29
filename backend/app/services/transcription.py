@@ -11,7 +11,7 @@ import logging
 import math
 import os
 import tempfile
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 import whisper
@@ -108,7 +108,7 @@ def merge_speakers(transcript_segments: List[Dict], speaker_segments: List[Dict]
     return merged
 
 
-def transcribe_from_bytes(audio_bytes: bytes, filename: Optional[str] = None) -> Dict[str, Any]:
+def transcribe_from_bytes(audio_source: Union[bytes, str], filename: Optional[str] = None) -> Dict[str, Any]:
     """
     Transcribe audio with preprocessing and optional diarization.
     Returns:
@@ -121,11 +121,15 @@ def transcribe_from_bytes(audio_bytes: bytes, filename: Optional[str] = None) ->
     temp_wav = None
     try:
         try:
-            temp_wav = preprocess_audio(audio_bytes, filename)
+            temp_wav = preprocess_audio(audio_source, filename)
         except Exception as e:
             logger.warning("Preprocessing failed: %s; saving raw audio to temp file", e)
             tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-            tmp.write(audio_bytes)
+            if isinstance(audio_source, bytes):
+                tmp.write(audio_source)
+            else:
+                with open(audio_source, "rb") as src:
+                    tmp.write(src.read())
             tmp.close()
             temp_wav = tmp.name
 

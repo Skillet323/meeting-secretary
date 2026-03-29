@@ -13,8 +13,8 @@ services:
     environment:
       - DATABASE_URL=sqlite:///./meeting_secretary.db
       - WHISPER_MODEL=small
-      - WHISPER_DEVICE=cuda  # Set to "cpu" if no GPU
-      - WHISPER_COMPUTE_TYPE=float16  # Use "int8" for CPU
+      - WHISPER_DEVICE=cpu  # Set to "cuda" only if GPU is available
+      - WHISPER_COMPUTE_TYPE=float32  # Use "int8" for CPU if needed
       - TASK_MODEL=google/flan-t5-large
       - USE_OLLAMA=${USE_OLLAMA:-false}
       - OLLAMA_MODEL=codellama:7b
@@ -44,9 +44,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - VITE_API_URL=/api
     ports:
-      - "5173:5173"
+      - "5173:80"
     depends_on:
       - backend
 

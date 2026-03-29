@@ -7,7 +7,7 @@ from typing import Dict, List, Tuple, Optional, Any
 
 from sqlmodel import Session, select
 
-from ..models import GoldStandard, EvaluationRun, EvaluationMetric, Meeting, Task
+from ..models import GoldStandard, EvaluationRun, EvaluationMetric, Meeting, Task, ProcessingMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -142,9 +142,7 @@ def evaluate_meeting(meeting: Meeting, session: Session) -> tuple[EvaluationRun,
         gold_tasks = []
 
     pred_tasks = session.exec(
-        select(__import__("..models", fromlist=["Task"]).Task).where(
-            __import__("..models", fromlist=["Task"]).Task.meeting_id == meeting.id
-        )
+        select(Task).where(Task.meeting_id == meeting.id)
     ).all()
 
     pred_task_dicts = [
@@ -172,11 +170,18 @@ def evaluate_meeting(meeting: Meeting, session: Session) -> tuple[EvaluationRun,
         "overall_quality_score": overall,
     }
 
+    meeting_info = json.loads(meeting.info) if meeting.info else {}
+    latest_metrics = session.exec(
+        select(ProcessingMetrics).where(ProcessingMetrics.meeting_id == meeting.id).order_by(ProcessingMetrics.created_at.desc())
+    ).first()
+    model_whisper = meeting_info.get("model_whisper") or (latest_metrics.model_whisper if latest_metrics else "unknown")
+    model_task = meeting_info.get("model_task") or (latest_metrics.model_task if latest_metrics else "unknown")
+
     run = EvaluationRun(
         meeting_id=meeting.id,
         gold_standard_id=gold.id,
-        model_whisper="unknown",
-        model_task="unknown",
+        model_whisper=model_whisper,
+        model_task=model_task,
         overall_quality_score=overall,
         details_json=json.dumps(details, ensure_ascii=False),
     )

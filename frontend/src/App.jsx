@@ -53,6 +53,7 @@ import {
   exportMeeting,
   getRecentMetrics,
   getEvaluations,
+  getMeetings,
 } from "./api";
 
 function safeNumber(value, digits = 1) {
@@ -78,12 +79,18 @@ export default function App() {
 
   const loadDashboardData = async () => {
     try {
-      const [metricsResp, evalResp] = await Promise.all([
+      const [metricsResp, evalResp, meetingsResp] = await Promise.all([
         getRecentMetrics(10).catch(() => ({ metrics: [] })),
         getEvaluations(10).catch(() => ({ evaluations: [] })),
+        getMeetings(10).catch(() => ({ meetings: [] })),
       ]);
       setRecentMetrics(metricsResp.metrics || []);
       setEvaluations(evalResp.evaluations || []);
+      setMeetings(meetingsResp.meetings || []);
+      if (!selectedMeeting && (meetingsResp.meetings || []).length > 0) {
+        setSelectedMeeting((meetingsResp.meetings || [])[0]);
+        setActiveTab("transcript");
+      }
     } catch {
       // Ignore dashboard refresh issues; the upload flow remains usable.
     }

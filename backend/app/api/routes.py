@@ -6,6 +6,9 @@ import json
 import os
 import httpx
 from io import StringIO
+import shutil
+import tempfile
+from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlmodel import Session, select
@@ -18,6 +21,38 @@ import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _serialize_meeting(session: Session, meeting_id: int) -> dict:
+    meeting = session.get(Meeting, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="meeting not found")
+
+    tasks = session.exec(select(Task).where(Task.meeting_id == meeting_id)).all()
+    info = json.loads(meeting.info) if meeting.info else {}
+    segments = info.pop("segments", [])
+    return {
+        "meeting": {
+            "id": meeting.id,
+            "transcript": meeting.transcript,
+            "created_at": meeting.created_at.isoformat() if meeting.created_at else None,
+        },
+        "tasks": [
+            {
+                "id": task.id,
+                "meeting_id": task.meeting_id,
+                "description": task.description,
+                "assignee": task.assignee,
+                "deadline": task.deadline,
+                "raw": task.raw,
+                "status": task.status,
+                "priority": task.priority,
+            }
+            for task in tasks
+        ],
+        "metadata": info,
+        "segments": segments,
+    }
 
 
 # === Background Processing with Progress Tracking ===
@@ -44,17 +79,17 @@ def _update_meeting_progress(meeting_id: int, progress: int, stage: str, message
         logger.error(f"Failed to update progress for meeting {meeting_id}: {e}")
 
 
-async def _process_meeting_background(meeting_id: int, audio_bytes: bytes, filename: str):
+async def _process_meeting_background(meeting_id: int, audio_source: str, filename: str, audio_size_bytes: int | None = None):
     """Background task to process meeting with progress updates."""
     start_time = time.time()
     try:
         # Initialize progress
         _update_meeting_progress(meeting_id, 0, "Initializing", "Starting processing")
-        
+
         # Step 1: Transcription
         _update_meeting_progress(meeting_id, 10, "Loading model", "Loading Whisper model...")
         transcribe_start = time.time()
-        res = transcribe(audio_bytes, filename)
+        res = transcribe(audio_source, filename)
         transcript = res.get("text", "")
         segments = res.get("segments", [])
         language = res.get("language")
@@ -84,6 +119,7 @@ async def _process_meeting_background(meeting_id: int, audio_bytes: bytes, filen
         # Step 4: Save full results
         metadata = {
             "filename": filename,
+            "audio_size_bytes": audio_size_bytes or 0,
             "language": language,
             "transcript_confidence": confidence,
             "transcribe_time_sec": transcribe_time,
@@ -91,6 +127,8 @@ async def _process_meeting_background(meeting_id: int, audio_bytes: bytes, filen
             "assign_time_sec": assign_time,
             "segments_count": len(segments),
             "has_diarization": res.get("has_diarization", False),
+            "model_whisper": os.environ.get("WHISPER_MODEL", "default"),
+            "model_task": os.environ.get("TASK_MODEL", "default"),
             "segments": segments,  # Store segments for later retrieval
             "status": "completed",
             "progress": 100,
@@ -116,7 +154,7 @@ async def _process_meeting_background(meeting_id: int, audio_bytes: bytes, filen
                 # Save metrics
                 metrics = ProcessingMetrics(
                     meeting_id=meeting.id,
-                    audio_size_bytes=len(audio_bytes),
+                    audio_size_bytes=audio_size_bytes or 0,
                     audio_duration_sec=segments[-1]["end"] if segments else 0,
                     transcribe_latency_sec=transcribe_time,
                     task_latency_sec=task_time,
@@ -145,6 +183,12 @@ async def _process_meeting_background(meeting_id: int, audio_bytes: bytes, filen
         logger.exception(f"Processing failed for meeting {meeting_id}: {e}")
         # Update status to failed
         _update_meeting_progress(meeting_id, 0, "Error", str(e), status="failed")
+    finally:
+        if audio_source and os.path.exists(audio_source):
+            try:
+                os.unlink(audio_source)
+            except OSError:
+                pass
 
 
 @router.on_event("startup")
@@ -158,11 +202,39 @@ def health():
     return {"status": "ok", "timestamp": time.time()}
 
 
+@router.get("/meetings")
+def list_meetings(limit: int = Query(20, ge=1, le=100), session: Session = Depends(get_session)):
+    meetings = session.exec(select(Meeting).order_by(Meeting.created_at.desc()).limit(limit)).all()
+    return {"meetings": [_serialize_meeting(session, meeting.id) for meeting in meetings if meeting.id is not None]}
+
+
 @router.get("/metrics")
 def get_metrics(limit: int = Query(10, ge=1, le=100), session: Session = Depends(get_session)):
     """Recent processing metrics (latency, quality scores)."""
     metrics = session.exec(select(ProcessingMetrics).order_by(ProcessingMetrics.created_at.desc()).limit(limit)).all()
-    return {"metrics": metrics}
+    return {
+        "metrics": [
+            {
+                "id": m.id,
+                "meeting_id": m.meeting_id,
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+                "audio_size_bytes": m.audio_size_bytes,
+                "audio_duration_sec": m.audio_duration_sec,
+                "transcribe_latency_sec": m.transcribe_latency_sec,
+                "task_latency_sec": m.task_latency_sec,
+                "assign_latency_sec": m.assign_latency_sec,
+                "total_latency_sec": m.total_latency_sec,
+                "transcript_confidence": m.transcript_confidence,
+                "segments_count": m.segments_count,
+                "tasks_count": m.tasks_count,
+                "language": m.language,
+                "model_whisper": m.model_whisper,
+                "model_task": m.model_task,
+                "has_diarization": m.has_diarization,
+            }
+            for m in metrics
+        ]
+    }
 
 
 # === Meeting Upload & Processing ===
@@ -170,67 +242,58 @@ def get_metrics(limit: int = Query(10, ge=1, le=100), session: Session = Depends
 async def upload_meeting(
     file: UploadFile = File(...),
     session: Session = Depends(get_session),
-    background_tasks: BackgroundTasks = None
+    background_tasks: BackgroundTasks = None,
 ):
     """
     Upload audio file for asynchronous processing.
     Returns immediate response with meeting_id; use /meeting/{id}/progress to track status.
     """
+    temp_audio_path = None
     try:
-        audio_bytes = await file.read()
-        filename = file.filename
-        
+        suffix = Path(file.filename or "upload.wav").suffix or ".wav"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            temp_audio_path = tmp.name
+
+        audio_size_bytes = os.path.getsize(temp_audio_path)
+        filename = file.filename or Path(temp_audio_path).name
+
         # Create meeting record with initial status
         initial_info = {
             "filename": filename,
+            "audio_size_bytes": audio_size_bytes,
             "status": "processing",
             "progress": 0,
             "current_stage": "Uploading",
-            "message": "File received, queued for processing"
+            "message": "File received, queued for processing",
         }
-        meeting = Meeting(
-            transcript="",
-            info=json.dumps(initial_info, ensure_ascii=False)
-        )
+        meeting = Meeting(transcript="", info=json.dumps(initial_info, ensure_ascii=False))
         session.add(meeting)
         session.commit()
         session.refresh(meeting)
-        
+
         # Kick off background processing
         if background_tasks:
-            background_tasks.add_task(_process_meeting_background, meeting.id, audio_bytes, filename)
+            background_tasks.add_task(_process_meeting_background, meeting.id, temp_audio_path, filename, audio_size_bytes)
         else:
-            # Fallback: run synchronously (should not happen in production)
             logger.warning("No background_tasks; running processing synchronously")
-            await _process_meeting_background(meeting.id, audio_bytes, filename)
-        
+            await _process_meeting_background(meeting.id, temp_audio_path, filename, audio_size_bytes)
+
         return {"meeting_id": meeting.id, "status": "processing", "progress": 0, "message": "Upload successful, processing started"}
-        
+
     except Exception as e:
         logger.exception("Upload failed")
+        if temp_audio_path and os.path.exists(temp_audio_path):
+            try:
+                os.unlink(temp_audio_path)
+            except OSError:
+                pass
         raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
 
 
 @router.get("/meeting/{meeting_id}")
 def get_meeting(meeting_id: int, session: Session = Depends(get_session)):
-    meeting = session.get(Meeting, meeting_id)
-    if not meeting:
-        raise HTTPException(status_code=404, detail="meeting not found")
-    tasks = session.exec(select(Task).where(Task.meeting_id == meeting_id)).all()
-    info = json.loads(meeting.info) if meeting.info else {}
-    # Extract segments if present
-    segments = info.pop("segments", [])
-    metadata = info
-    return {
-        "meeting": {
-            "id": meeting.id,
-            "transcript": meeting.transcript,
-            "created_at": meeting.created_at.isoformat() if meeting.created_at else None
-        },
-        "tasks": tasks,
-        "metadata": metadata,
-        "segments": segments
-    }
+    return _serialize_meeting(session, meeting_id)
 
 
 @router.get("/meeting/{meeting_id}/progress")

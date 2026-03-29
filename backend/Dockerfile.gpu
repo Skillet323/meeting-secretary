@@ -3,11 +3,8 @@
 
 ARG BUILD_GPU=false
 
-# Stage 1: Base
 FROM python:3.13-slim AS base
 WORKDIR /app
-
-# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsndfile1 \
@@ -15,34 +12,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Stage 2: CPU build
 FROM base AS cpu
-COPY pyproject.toml poetry.lock* ./
-RUN pip install --no-cache-dir poetry && \
-    poetry config virtualenvs.create false && \
-    POETRY_VIRTUALENVS_CREATE=false poetry install --no-interaction --no-ansi --only main
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
-# Stage 3: GPU build (CUDA)
 FROM base AS gpu
-# Install CUDA dependencies (for Debian-based Python image)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nvidia-cuda-toolkit \
     && rm -rf /var/lib/apt/lists/*
-
-COPY pyproject.toml poetry.lock* ./
-RUN pip install --no-cache-dir poetry && \
-    poetry config virtualenvs.create false && \
-    POETRY_VIRTUALENVS_CREATE=false poetry install --no-interaction --no-ansi --only main
-
-# Set CUDA environment
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 ENV CUDA_AVAILABLE=true
 ENV WHISPER_DEVICE=cuda
 ENV WHISPER_COMPUTE_TYPE=float16
-
 COPY . .
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
-# Production image (choose based on ARG)
 FROM ${BUILD_GPU:-cpu} AS production
