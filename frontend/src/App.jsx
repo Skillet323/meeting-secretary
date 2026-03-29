@@ -104,13 +104,17 @@ export default function App() {
     setUploading(true);
     setProgress(0);
     setError(null);
-    setProcessingStatus("");
+    setProcessingStatus("Uploading file...");
 
     try {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await uploadMeeting(formData);
+      // Track upload progress: 0-5% for upload, 5-100% for processing
+      const response = await uploadMeeting(formData, (uploadPercent) => {
+        setProgress(Math.round((uploadPercent / 100) * 5));
+      });
+      
       const { meeting_id } = response;
       setProgress(5);
       setProcessingStatus("Processing started...");
@@ -120,7 +124,8 @@ export default function App() {
       const poll = async () => {
         try {
           const prog = await getMeetingProgress(meeting_id);
-          setProgress(prog.progress ?? 0);
+          // Scale progress to 5-100% range for processing
+          setProgress(5 + Math.round((prog.progress ?? 0) * 0.95));
           setProcessingStatus(prog.message || prog.current_stage || "");
 
           if (prog.status === "completed") {

@@ -2,11 +2,22 @@ import axios from "axios";
 
 const api = axios.create({
   baseURL: "/api",
-  timeout: 120000,
+  // Increase timeout to 10 minutes for large file uploads
+  timeout: 600000,
 });
 
-export const uploadMeeting = async (formData) => {
-  const response = await api.post("/upload_meeting", formData);
+export const uploadMeeting = async (formData, onProgress = null) => {
+  const response = await api.post("/upload_meeting", formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    },
+    onUploadProgress: (progressEvent) => {
+      if (onProgress) {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        onProgress(percentCompleted);
+      }
+    }
+  });
   return response.data;
 };
 
@@ -27,7 +38,7 @@ export const exportMeeting = async (id, format) => {
   return response.data;
 };
 
-export const getMetrics = async (limit = 10) => {
+export const getRecentMetrics = async (limit = 10) => {
   const response = await api.get(`/metrics?limit=${limit}`);
   return response.data;
 };

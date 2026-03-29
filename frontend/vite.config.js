@@ -13,6 +13,10 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/api/, ""),
+        httpProxyMiddlewareOptions: {
+          // Allow large file uploads (2GB)
+          limit: '2gb',
+        },
       },
     },
   },
