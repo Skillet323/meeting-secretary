@@ -1,0 +1,5 @@
+path,label,split,utt_id
+data/Audio1.wav,speaker_01,train,0001a
+data/Audio2.wav,speaker_02,train,0002a
+data/Audio4_with_speaker_as_Audio1.wav,speaker_01,valid,0001b
+data/Audio3.wav,speaker_03,test,0003a
