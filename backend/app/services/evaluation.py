@@ -4,7 +4,7 @@ import json
 import logging
 import re
 from typing import Dict, List, Tuple, Optional, Any
-
+from pathlib import Path
 from sqlmodel import Session, select
 
 from ..models import GoldStandard, EvaluationRun, EvaluationMetric, Meeting, Task, ProcessingMetrics
@@ -124,18 +124,24 @@ def evaluate_tasks(pred_tasks: List[dict], gold_tasks: List[dict]) -> Dict[str, 
         "matched_tasks": tp,
     }
 
+def meeting_ref_from_filename(filename: str) -> str:
+    stem = Path(filename).stem  # ES2002a.Mix-Headset
+    return re.sub(r"\.Mix-Headset$", "", stem)
 
 def evaluate_meeting(meeting: Meeting, session: Session) -> tuple[EvaluationRun, dict]:
     """
     Evaluate processed meeting against a gold standard with meeting_ref == meeting.id.
     Creates EvaluationRun and EvaluationMetric rows.
     """
+    meeting_info = json.loads(meeting.info) if meeting.info else {}
+    filename = meeting_info.get("filename", "")
+    meeting_ref = meeting_ref_from_filename(filename)
+
     gold = session.exec(
-        select(GoldStandard).where(GoldStandard.meeting_ref == str(meeting.id))
+        select(GoldStandard).where(GoldStandard.meeting_ref == meeting_ref)
     ).first()
     if not gold:
-        raise ValueError(f"No gold standard found for meeting_id={meeting.id}")
-
+        raise ValueError(f"No gold standard found for meeting_ref={meeting_ref}")
     try:
         gold_tasks = json.loads(gold.tasks_json) if gold.tasks_json else []
     except Exception:
