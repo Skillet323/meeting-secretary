@@ -1,0 +1,35 @@
+<?xml version="ISO-8859-1"?>
+<Column name="media" attribute="time" width="180" xmlns="ch.idiap.jferret.plugin">
+ <Slide src="thumb/ES2013a.74.01__80.19.jpg" target="media" attribute="move" value="0054010"/>
+ <Slide src="thumb/ES2013a.88.70__99.20.jpg" target="media" attribute="move" value="0068700"/>
+ <Slide src="thumb/ES2013a.99.20__107.35.jpg" target="media" attribute="move" value="0079200"/>
+ <Slide src="thumb/ES2013a.107.35__117.59.jpg" target="media" attribute="move" value="0087350"/>
+ <Slide src="thumb/ES2013a.117.59__140.23.jpg" target="media" attribute="move" value="0097590"/>
+ <Slide src="thumb/ES2013a.140.23__158.34.jpg" target="media" attribute="move" value="0120229"/>
+ <Slide src="thumb/ES2013a.158.34__181.99.jpg" target="media" attribute="move" value="0138340"/>
+ <Slide src="thumb/ES2013a.181.99__200.34.jpg" target="media" attribute="move" value="0161990"/>
+ <Slide src="thumb/ES2013a.200.34__214.36.jpg" target="media" attribute="move" value="0180340"/>
+ <Slide src="thumb/ES2013a.214.36__226.69.jpg" target="media" attribute="move" value="0194360"/>
+ <Slide src="thumb/ES2013a.226.69__236.47.jpg" target="media" attribute="move" value="0206690"/>
+ <Slide src="thumb/ES2013a.236.47__243.32.jpg" target="media" attribute="move" value="0216470"/>
+ <Slide src="thumb/ES2013a.243.32__308.40.jpg" target="media" attribute="move" value="0223320"/>
+ <Slide src="thumb/ES2013a.308.40__342.64.jpg" target="media" attribute="move" value="0288400"/>
+ <Slide src="thumb/ES2013a.342.64__369.54.jpg" target="media" attribute="move" value="0322640"/>
+ <Slide src="thumb/ES2013a.369.54__377.69.jpg" target="media" attribute="move" value="0349540"/>
+ <Slide src="thumb/ES2013a.377.69__422.92.jpg" target="media" attribute="move" value="0357690"/>
+ <Slide src="thumb/ES2013a.422.92__468.73.jpg" target="media" attribute="move" value="0402920"/>
+ <Slide src="thumb/ES2013a.468.73__472.55.jpg" target="media" attribute="move" value="0448730"/>
+ <Slide src="thumb/ES2013a.472.55__495.72.jpg" target="media" attribute="move" value="0452550"/>
+ <Slide src="thumb/ES2013a.495.72__535.50.jpg" target="media" attribute="move" value="0475720"/>
+ <Slide src="thumb/ES2013a.535.50__558.73.jpg" target="media" attribute="move" value="0515500"/>
+ <Slide src="thumb/ES2013a.558.73__614.55.jpg" target="media" attribute="move" value="0538730"/>
+ <Slide src="thumb/ES2013a.614.55__684.78.jpg" target="media" attribute="move" value="0594550"/>
+ <Slide src="thumb/ES2013a.684.78__717.18.jpg" target="media" attribute="move" value="0664780"/>
+ <Slide src="thumb/ES2013a.717.18__733.14.jpg" target="media" attribute="move" value="0697180"/>
+ <Slide src="thumb/ES2013a.733.14__742.21.jpg" target="media" attribute="move" value="0713140"/>
+ <Slide src="thumb/ES2013a.742.21__747.69.jpg" target="media" attribute="move" value="0722210"/>
+ <Slide src="thumb/ES2013a.747.69__752.23.jpg" target="media" attribute="move" value="0727690"/>
+ <Slide src="thumb/ES2013a.752.23__764.24.jpg" target="media" attribute="move" value="0732230"/>
+ <Slide src="thumb/ES2013a.764.24__810.69.jpg" target="media" attribute="move" value="0744240"/>
+ <Slide src="thumb/ES2013a.810.69__844.67.jpg" target="media" attribute="move" value="0790690"/>
+</Column>

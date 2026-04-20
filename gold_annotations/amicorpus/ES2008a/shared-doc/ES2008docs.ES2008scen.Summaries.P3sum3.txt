@@ -1,0 +1,418 @@
+Received: from [139.222.1.4] by messenger
+  (ArGoSoft Mail Server Freeware, Version 1.8 (1.8.6.4)); Fri, 4 Feb 2005 15:14:49 +0000
+Message-ID: <008001c50acc$75705770$0401de8b@participant3>
+From: "participant3" <participant3@ami>
+To: <HeadOfDept@ami>
+References: <01c50aca$Blat.v2.2.2$c2c372ac@messenger>
+Subject: Re: Please summarise the last meeting
+Date: Fri, 4 Feb 2005 15:16:09 -0000
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+	boundary="----=_NextPart_000_007D_01C50ACC.74944F50"
+X-Priority: 3
+X-MSMail-Priority: Normal
+X-Mailer: Microsoft Outlook Express 6.00.2900.2180
+X-MimeOLE: Produced By Microsoft MimeOLE V6.00.2900.2180
+
+This is a multi-part message in MIME format.
+
+------=_NextPart_000_007D_01C50ACC.74944F50
+Content-Type: text/plain;
+	charset="iso-8859-1"
+Content-Transfer-Encoding: quoted-printable
+
+For the documentation of the design project, you and all of your =
+colleages are asked to fill out a short questionnaire after eDear Sir,
+here is the summary of the last meeting as requested.
+
+Iain.
+
+  [ABSTRACT]   Write one paragraph of coherent text to summarize the =
+meeting as a whole from your role's perspective=20
+
+  =20
+
+   A meeting was held at 14:20 on 4th February 2005 to discuss the =
+conceptual design for the new TV remote control project. The previous =
+meeting was reviewed, with particular emphasis on our design goals: =
+simplicity and fashion. The industrial designer made a presentation =
+describing the different materials and components we might be able to =
+use. The user interface designer suggested some simple design concepts =
+around which a detailed design can be made. The marketing manager =
+discussed current trends in fashion that will influence our design =
+decisions. The meeting concluded with a lively discussion on the fashion =
+and design of the product.
+
+   =20
+
+  [DECISIONS]   Name all decisions that were made during the meeting. =
+Mark those decisions that you consider of high importance for your role =
+with a *. Write fragmented notes.
+
+
+
+   The remote control will have the following properties and functions:
+
+  * A few simple buttons for favouriate channels, volume and power =
+on/off. An on-screen menu interface provides access to more advanced =
+features.
+
+  It will have a 'spongy' latex exterior, with a more solid interior to =
+protect the components.
+
+  It will have a 'simple' chip.
+
+  Fruity colours will be used.=20
+
+  =20
+
+  [PROBLEMS/ISSUES] Name the problems or difficulties that occurred =
+during the meeting. Mark those that you consider of high importance for =
+your role with a *. Write fragmented notes.
+
+
+
+
+   It was difficult to decide between a scroll button or push buttons, =
+as each has different advantages.
+
+  =20
+
+  [ACTIONS]  Name the next steps that each member will take until the =
+next meeting. Write fragmented notes.
+
+
+
+  Produce prototype designs.
+
+------=_NextPart_000_007D_01C50ACC.74944F50
+Content-Type: text/html;
+	charset="iso-8859-1"
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<HTML xmlns=3D"http://www.w3.org/TR/REC-html40" xmlns:o =3D=20
+"urn:schemas-microsoft-com:office:office" xmlns:w =3D=20
+"urn:schemas-microsoft-com:office:word"><HEAD><TITLE>For the =
+documentation of the design project, you and all of your colleages are =
+asked to fill out a short questionnaire after e</TITLE>
+<META http-equiv=3DContent-Type content=3D"text/html; =
+charset=3Diso-8859-1">
+<META content=3DWord.Document name=3DProgId>
+<META content=3D"MSHTML 6.00.2900.2523" name=3DGENERATOR>
+<META content=3D"Microsoft Word 10" name=3DOriginator><LINK=20
+href=3D"SummaryFramework_files/filelist.xml" rel=3DFile-List><!--[if gte =
+mso 9]><xml>
+ <o:DocumentProperties>
+  <o:Author>Thomas Kleinbauer</o:Author>
+  <o:LastAuthor>AMI</o:LastAuthor>
+  <o:Revision>4</o:Revision>
+  <o:TotalTime>2</o:TotalTime>
+  <o:LastPrinted>2004-10-21T15:56:00Z</o:LastPrinted>
+  <o:Created>2004-10-28T14:08:00Z</o:Created>
+  <o:LastSaved>2004-11-19T16:19:00Z</o:LastSaved>
+  <o:Pages>1</o:Pages>
+  <o:Words>179</o:Words>
+  <o:Characters>1022</o:Characters>
+  <o:Company>DFKI</o:Company>
+  <o:Lines>8</o:Lines>
+  <o:Paragraphs>2</o:Paragraphs>
+  <o:CharactersWithSpaces>1199</o:CharactersWithSpaces>
+  <o:Version>10.2625</o:Version>
+ </o:DocumentProperties>
+</xml><![endif]--><!--[if gte mso 9]><xml>
+ <w:WordDocument>
+  <w:SpellingState>Clean</w:SpellingState>
+  <w:GrammarState>Clean</w:GrammarState>
+  <w:HyphenationZone>21</w:HyphenationZone>
+  <w:BrowserLevel>MicrosoftInternetExplorer4</w:BrowserLevel>
+ </w:WordDocument>
+</xml><![endif]-->
+<STYLE>@page Section1 {size: 595.3pt 841.9pt; margin: 70.85pt 70.85pt =
+2.0cm 70.85pt; mso-header-margin: 35.4pt; mso-footer-margin: 35.4pt; =
+mso-paper-source: 0; }
+P.MsoNormal {
+	FONT-SIZE: 12pt; MARGIN: 0cm 0cm 0pt; FONT-FAMILY: "Times New Roman"; =
+mso-ansi-language: DE; mso-style-parent: ""; mso-pagination: =
+widow-orphan; mso-fareast-font-family: "Times New Roman"; =
+mso-fareast-language: DE
+}
+LI.MsoNormal {
+	FONT-SIZE: 12pt; MARGIN: 0cm 0cm 0pt; FONT-FAMILY: "Times New Roman"; =
+mso-ansi-language: DE; mso-style-parent: ""; mso-pagination: =
+widow-orphan; mso-fareast-font-family: "Times New Roman"; =
+mso-fareast-language: DE
+}
+DIV.MsoNormal {
+	FONT-SIZE: 12pt; MARGIN: 0cm 0cm 0pt; FONT-FAMILY: "Times New Roman"; =
+mso-ansi-language: DE; mso-style-parent: ""; mso-pagination: =
+widow-orphan; mso-fareast-font-family: "Times New Roman"; =
+mso-fareast-language: DE
+}
+H3 {
+	FONT-SIZE: 13pt; MARGIN: 12pt 0cm 3pt; FONT-FAMILY: Arial; =
+mso-ansi-language: DE; mso-pagination: widow-orphan; =
+mso-fareast-language: DE; mso-style-next: Normal; mso-outline-level: 3
+}
+P.MsoBodyText {
+	FONT-SIZE: 12pt; MARGIN: 0cm 0cm 0pt; FONT-FAMILY: Arial; TEXT-ALIGN: =
+justify; mso-pagination: widow-orphan; mso-fareast-font-family: "Times =
+New Roman"; mso-fareast-language: DE
+}
+LI.MsoBodyText {
+	FONT-SIZE: 12pt; MARGIN: 0cm 0cm 0pt; FONT-FAMILY: Arial; TEXT-ALIGN: =
+justify; mso-pagination: widow-orphan; mso-fareast-font-family: "Times =
+New Roman"; mso-fareast-language: DE
+}
+DIV.MsoBodyText {
+	FONT-SIZE: 12pt; MARGIN: 0cm 0cm 0pt; FONT-FAMILY: Arial; TEXT-ALIGN: =
+justify; mso-pagination: widow-orphan; mso-fareast-font-family: "Times =
+New Roman"; mso-fareast-language: DE
+}
+P.MsoBodyTextIndent {
+	FONT-SIZE: 12pt; MARGIN: 0cm 0cm 0pt 81pt; TEXT-INDENT: -81pt; =
+FONT-FAMILY: "Times New Roman"; mso-pagination: widow-orphan; =
+mso-fareast-font-family: "Times New Roman"; mso-fareast-language: DE; =
+tab-stops: 333.0pt
+}
+LI.MsoBodyTextIndent {
+	FONT-SIZE: 12pt; MARGIN: 0cm 0cm 0pt 81pt; TEXT-INDENT: -81pt; =
+FONT-FAMILY: "Times New Roman"; mso-pagination: widow-orphan; =
+mso-fareast-font-family: "Times New Roman"; mso-fareast-language: DE; =
+tab-stops: 333.0pt
+}
+DIV.MsoBodyTextIndent {
+	FONT-SIZE: 12pt; MARGIN: 0cm 0cm 0pt 81pt; TEXT-INDENT: -81pt; =
+FONT-FAMILY: "Times New Roman"; mso-pagination: widow-orphan; =
+mso-fareast-font-family: "Times New Roman"; mso-fareast-language: DE; =
+tab-stops: 333.0pt
+}
+P.MsoBodyTextIndent2 {
+	FONT-SIZE: 12pt; MARGIN: 0cm 0cm 0pt 35.4pt; FONT-FAMILY: "Times New =
+Roman"; mso-pagination: widow-orphan; mso-fareast-font-family: "Times =
+New Roman"; mso-fareast-language: DE
+}
+LI.MsoBodyTextIndent2 {
+	FONT-SIZE: 12pt; MARGIN: 0cm 0cm 0pt 35.4pt; FONT-FAMILY: "Times New =
+Roman"; mso-pagination: widow-orphan; mso-fareast-font-family: "Times =
+New Roman"; mso-fareast-language: DE
+}
+DIV.MsoBodyTextIndent2 {
+	FONT-SIZE: 12pt; MARGIN: 0cm 0cm 0pt 35.4pt; FONT-FAMILY: "Times New =
+Roman"; mso-pagination: widow-orphan; mso-fareast-font-family: "Times =
+New Roman"; mso-fareast-language: DE
+}
+P.MsoBodyTextIndent3 {
+	FONT-SIZE: 12pt; MARGIN: 0cm 0cm 0pt 35.4pt; FONT-FAMILY: Arial; =
+TEXT-ALIGN: justify; mso-pagination: widow-orphan; =
+mso-fareast-font-family: "Times New Roman"; mso-fareast-language: DE
+}
+LI.MsoBodyTextIndent3 {
+	FONT-SIZE: 12pt; MARGIN: 0cm 0cm 0pt 35.4pt; FONT-FAMILY: Arial; =
+TEXT-ALIGN: justify; mso-pagination: widow-orphan; =
+mso-fareast-font-family: "Times New Roman"; mso-fareast-language: DE
+}
+DIV.MsoBodyTextIndent3 {
+	FONT-SIZE: 12pt; MARGIN: 0cm 0cm 0pt 35.4pt; FONT-FAMILY: Arial; =
+TEXT-ALIGN: justify; mso-pagination: widow-orphan; =
+mso-fareast-font-family: "Times New Roman"; mso-fareast-language: DE
+}
+SPAN.GramE {
+	mso-style-name: ""; mso-gram-e: yes
+}
+DIV.Section1 {
+	page: Section1
+}
+OL {
+	MARGIN-BOTTOM: 0cm
+}
+UL {
+	MARGIN-BOTTOM: 0cm
+}
+</STYLE>
+<!--[if gte mso 10]>
+<style>
+ /* Style Definitions */
+ table.MsoNormalTable
+	{mso-style-name:"Table Normal";
+	mso-tstyle-rowband-size:0;
+	mso-tstyle-colband-size:0;
+	mso-style-noshow:yes;
+	mso-style-parent:"";
+	mso-padding-alt:0cm 5.4pt 0cm 5.4pt;
+	mso-para-margin:0cm;
+	mso-para-margin-bottom:.0001pt;
+	mso-pagination:widow-orphan;
+	font-size:10.0pt;
+	font-family:"Times New Roman";}
+</style>
+<![endif]--></HEAD>
+<BODY lang=3DEN-US style=3D"tab-interval: 35.4pt" bgColor=3D#ffffff>
+<DIV><FONT face=3DArial size=3D2>Dear Sir,</FONT></DIV>
+<DIV><FONT face=3DArial size=3D2>here is the summary of the last meeting =
+as=20
+requested.</FONT></DIV>
+<DIV><FONT face=3DArial size=3D2></FONT>&nbsp;</DIV>
+<DIV><FONT face=3DArial size=3D2>Iain.</FONT></DIV>
+<BLOCKQUOTE dir=3Dltr=20
+style=3D"PADDING-RIGHT: 0px; PADDING-LEFT: 5px; MARGIN-LEFT: 5px; =
+BORDER-LEFT: #000000 2px solid; MARGIN-RIGHT: 0px">
+  <DIV style=3D"FONT: 10pt arial">
+  <P class=3DMsoBodyTextIndent=20
+  style=3D"BORDER-RIGHT: medium none; PADDING-RIGHT: 0cm; BORDER-TOP: =
+medium none; PADDING-LEFT: 0cm; PADDING-BOTTOM: 0cm; MARGIN-LEFT: 0cm; =
+BORDER-LEFT: medium none; TEXT-INDENT: 0cm; PADDING-TOP: 0cm; =
+BORDER-BOTTOM: medium none; tab-stops: 99.0pt 225.0pt 333.0pt; =
+mso-border-bottom-alt: solid windowtext .5pt; mso-padding-alt: 0cm 0cm =
+1.0pt 0cm"><SPAN=20
+  lang=3DEN-GB=20
+  style=3D"FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><o:p></o:p></SPAN></P></DIV>
+  <DIV class=3DSection1>
+  <P class=3DMsoBodyTextIndent><B><SPAN lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB">[ABSTRACT]</SPAN></B><SPAN=20
+  lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><SPAN=20
+  style=3D"mso-spacerun: yes">&nbsp;&nbsp; </SPAN><I>Write one paragraph =
+of<U>=20
+  coherent text</U> to summarize the meeting as a whole from your =
+role=92s=20
+  perspective</I></SPAN><SPAN lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><o:p>&nbsp;</o:p></SPAN></P>
+  <P class=3DMsoBodyTextIndent style=3D"MARGIN-LEFT: 0cm; TEXT-INDENT: =
+0cm"><SPAN=20
+  lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><o:p>&nbsp;</o:p></SPAN></P>
+  <P class=3DMsoBodyTextIndent style=3D"MARGIN-LEFT: 0cm; TEXT-INDENT: =
+0cm"><SPAN=20
+  lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><o:p>&nbsp;A=20
+  meeting was held at 14:20 on 4th February 2005 to discuss the =
+conceptual=20
+  design for the new TV remote control project. The previous meeting was =
+
+  reviewed, with particular emphasis on our design goals: simplicity and =
+
+  fashion. The industrial designer made a presentation describing the =
+different=20
+  materials and components we might be able to use. The user interface =
+designer=20
+  suggested some simple design concepts around which a detailed design =
+can be=20
+  made. The marketing manager discussed current trends in fashion that =
+will=20
+  influence our design decisions. The meeting concluded with a lively =
+discussion=20
+  on the fashion and design of the product.</o:p></SPAN></P>
+  <P class=3DMsoBodyTextIndent style=3D"MARGIN-LEFT: 0cm; TEXT-INDENT: =
+0cm"><SPAN=20
+  lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><o:p>&nbsp;</o:p></SPAN><SPAN=20
+  lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><o:p>&nbsp;</o:p></SPAN></P>
+  <P class=3DMsoNormal style=3D"tab-stops: 333.0pt"><B><SPAN =
+lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB">[DECISIONS]</SPAN></B><SPAN=20
+  lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><SPAN=20
+  style=3D"mso-spacerun: yes">&nbsp;&nbsp; </SPAN><I>Name all decisions =
+that were=20
+  made during the meeting. Mark those decisions that you consider of =
+high=20
+  importance for your role with a *. Write <U>fragmented notes</U>.<BR=20
+  style=3D"mso-special-character: line-break"><![if =
+!supportLineBreakNewLine]><BR=20
+  style=3D"mso-special-character: =
+line-break"><![endif]></I><o:p></o:p></SPAN></P>
+  <P class=3DMsoNormal style=3D"tab-stops: 333.0pt"><SPAN lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><o:p>&nbsp;The=20
+  remote control will have the following properties and=20
+  functions:</o:p></SPAN></P>
+  <P class=3DMsoNormal style=3D"tab-stops: 333.0pt"><SPAN lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><o:p>* A=20
+  few simple buttons for favouriate channels, volume and power on/off.=20
+  </o:p></SPAN><SPAN lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><o:p>An=20
+  on-screen menu interface provides access to more advanced=20
+  features.</o:p></SPAN></P>
+  <P class=3DMsoNormal style=3D"tab-stops: 333.0pt"><SPAN lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><o:p>It=20
+  will have a 'spongy' latex exterior, with a more solid interior to =
+protect the=20
+  components.</o:p></SPAN></P>
+  <P class=3DMsoNormal style=3D"tab-stops: 333.0pt"><SPAN lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><o:p>It=20
+  will have a 'simple' chip.</o:p></SPAN></P>
+  <P class=3DMsoNormal style=3D"tab-stops: 333.0pt"><SPAN lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><o:p>Fruity=20
+  colours will be used.&nbsp;</o:p></SPAN></P>
+  <P class=3DMsoNormal style=3D"tab-stops: 333.0pt"><SPAN lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><o:p>&nbsp;</o:p></SPAN></P>
+  <P class=3DMsoNormal style=3D"tab-stops: 333.0pt"><B><SPAN =
+lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB">[PROBLEMS/ISSUES]</SPAN></B><SPAN=20
+  lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"> <I>Name=20
+  the problems or difficulties that occurred during the meeting. Mark =
+those that=20
+  you consider of high importance for your role with a *. Write =
+<U>fragmented=20
+  notes</U>.<BR style=3D"mso-special-character: line-break"><![if =
+!supportLineBreakNewLine]><BR=20
+  style=3D"mso-special-character: =
+line-break"><![endif]></I><o:p></o:p></SPAN></P>
+  <P class=3DMsoNormal style=3D"tab-stops: 333.0pt"><SPAN lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><o:p></o:p></SPAN></P>
+  <P class=3DMsoNormal style=3D"tab-stops: 333.0pt"><SPAN lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><o:p>&nbsp;It=20
+  was difficult to&nbsp;decide between&nbsp;a scroll button or push =
+buttons, as=20
+  each has different advantages.</o:p></SPAN></P>
+  <P class=3DMsoNormal style=3D"tab-stops: 333.0pt"><SPAN lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><o:p></o:p></SPAN><SPAN=20
+  lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><o:p>&nbsp;</o:p></SPAN></P>
+  <P class=3DMsoNormal style=3D"tab-stops: 333.0pt"><B><SPAN =
+lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB">[ACTIONS]</SPAN></B><SPAN=20
+  lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><SPAN=20
+  style=3D"mso-spacerun: yes">&nbsp; </SPAN><I>Name the next steps that =
+each=20
+  member will take until the next meeting. Write <U>fragmented=20
+  notes</U>.</I></SPAN></P>
+  <P class=3DMsoNormal style=3D"tab-stops: 333.0pt"><SPAN lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB"><EM></EM></SPAN>&nbsp;</P>
+  <P class=3DMsoNormal style=3D"tab-stops: 333.0pt"><FONT size=3D3><SPAN =
+lang=3DEN-GB=20
+  style=3D"FONT-SIZE: 10pt; FONT-FAMILY: Arial; mso-ansi-language: =
+EN-GB">Produce=20
+  prototype designs.</SPAN></FONT></P></DIV></BLOCKQUOTE></BODY></HTML>
+
+------=_NextPart_000_007D_01C50ACC.74944F50--
+
