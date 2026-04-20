@@ -1,4 +1,30 @@
-# Task extraction service using T5, with a strong rule-based fallback.
+# backend/app/services/task_extraction.py
+"""
+Task extraction via OpenRouter (free tier) with a robust rule-based fallback.
+
+Model strategy
+--------------
+Primary  : OpenRouter free router  → set OPENROUTER_API_KEY + OPENROUTER_TASK_MODEL=openrouter/free
+           When you want reproducibility, pin to a specific free model, e.g.:
+               meta-llama/llama-3.3-70b-instruct:free
+               google/gemma-3-27b-it:free
+               mistralai/mistral-7b-instruct:free
+           The `response.model` field in each reply tells you which model
+           was actually used — handy for later evaluation.
+
+Fallback : Pure regex / heuristic extraction (no network, always works).
+
+Environment variables (.env)
+----------------------------
+TASK_PROVIDER          = openrouter          # or "rules" to skip API entirely
+OPENROUTER_API_KEY     = sk-or-...
+OPENROUTER_TASK_MODEL  = openrouter/free     # or any :free model slug
+
+GitHub Codespaces note
+----------------------
+Add OPENROUTER_API_KEY to repo/codespace secrets; no GPU or local weights needed.
+"""
+
 from __future__ import annotations
 
 import json
@@ -6,34 +32,15 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-import torch
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+import httpx
 
 from ..config import settings
 
 logger = logging.getLogger(__name__)
 
-_tokenizer = None
-_model = None
-
-
-def load_local_model():
-    """Lazy-load T5 model."""
-    global _tokenizer, _model
-    if _tokenizer is not None and _model is not None:
-        return _tokenizer, _model
-
-    logger.info("[TASK] Loading model: %s", settings.TASK_MODEL)
-    _tokenizer = AutoTokenizer.from_pretrained(settings.TASK_MODEL)
-    _model = AutoModelForSeq2SeqLM.from_pretrained(settings.TASK_MODEL)
-
-    device = "cuda" if torch.cuda.is_available() and settings.WHISPER_DEVICE == "cuda" else "cpu"
-    _model = _model.to(device)
-    _model.eval()
-
-    logger.info("[TASK] Model loaded on %s", device.upper())
-    return _tokenizer, _model
-
+# ---------------------------------------------------------------------------
+# Helpers shared by both paths
+# ---------------------------------------------------------------------------
 
 def _normalize_space(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
@@ -41,19 +48,17 @@ def _normalize_space(text: str) -> str:
 
 def _guess_deadline(sentence: str) -> Optional[str]:
     m = re.search(
-        r"(?:by|до|к|к\s+)(\d{1,2}(?:[./-]\d{1,2})?(?:[./-]\d{2,4})?|"
+        r"(?:by|до|к|к\s+)"
+        r"(\d{1,2}(?:[./-]\d{1,2})?(?:[./-]\d{2,4})?|"
         r"(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
         r"понедельник|вторник|среда|четверг|пятница|суббота|воскресенье))",
         sentence,
         flags=re.IGNORECASE,
     )
-    if m:
-        return m.group(1)
-    return None
+    return m.group(1) if m else None
 
 
 def _guess_assignee(sentence: str) -> Optional[str]:
-    # Patterns like "for Ivan", "to Maria", "Ивану", "Марии", "@name"
     patterns = [
         r"(?:for|to|assigned to|by)\s+([A-ZА-ЯЁ][a-zа-яё]+(?:\s+[A-ZА-ЯЁ][a-zа-яё]+)?)",
         r"(?:для|от|к)\s+([A-ZА-ЯЁ][a-zа-яё]+(?:\s+[A-ZА-ЯЁ][a-zа-яё]+)?)",
@@ -78,19 +83,22 @@ def _looks_like_task(sentence: str) -> bool:
     return any(marker in s for marker in markers)
 
 
+# ---------------------------------------------------------------------------
+# Rule-based fallback (always available)
+# ---------------------------------------------------------------------------
+
 def _extract_tasks_simple(transcript: str) -> List[Dict[str, Any]]:
-    """Heuristic extraction for transcripts when the LLM is unavailable or fails."""
+    """Heuristic extraction — no external dependencies."""
     tasks: List[Dict[str, Any]] = []
     sentences = re.split(r"(?<=[.!?。！？])\s+|\n+", transcript)
 
-    for raw_sentence in sentences:
-        sentence = _normalize_space(raw_sentence)
+    for raw in sentences:
+        sentence = _normalize_space(raw)
         if not sentence or len(sentence) < 12:
             continue
         if not _looks_like_task(sentence):
             continue
 
-        # Trim obvious lead-ins.
         sentence = re.sub(
             r"^(?:ну|okay|ok|please|let's|we should|we need to|нужно|надо)\s*,?\s*",
             "",
@@ -98,40 +106,45 @@ def _extract_tasks_simple(transcript: str) -> List[Dict[str, Any]]:
             flags=re.IGNORECASE,
         )
 
-        description = sentence[:500]
-        assignee = _guess_assignee(sentence)
-        deadline = _guess_deadline(sentence)
-
         tasks.append({
-            "description": description,
-            "assignee_hint": assignee,
-            "deadline_hint": deadline,
+            "description": sentence[:500],
+            "assignee_hint": _guess_assignee(sentence),
+            "deadline_hint": _guess_deadline(sentence),
             "source": "rule_based",
         })
 
-    # Deduplicate by normalized description prefix
-    unique = []
-    seen = set()
-    for task in tasks:
-        key = _normalize_space(task["description"].lower())[:120]
+    # Deduplicate
+    unique: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for t in tasks:
+        key = _normalize_space(t["description"].lower())[:120]
         if key not in seen:
             seen.add(key)
-            unique.append(task)
+            unique.append(t)
     return unique
 
 
-def _parse_generated_tasks(generated: str) -> List[Dict[str, Any]]:
-    """Try to parse JSON array from model output, with a few recovery strategies."""
-    candidates = []
+# ---------------------------------------------------------------------------
+# JSON parser for LLM output
+# ---------------------------------------------------------------------------
 
-    start = generated.find("[")
-    end = generated.rfind("]")
-    if start != -1 and end != -1 and end > start:
-        candidates.append(generated[start:end + 1])
+def _parse_llm_output(raw: str) -> List[Dict[str, Any]]:
+    """
+    Try to extract a JSON array from free-form LLM text.
+    Falls back to line-by-line heuristic if JSON parsing fails.
+    """
+    candidates: List[str] = []
 
-    fenced = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", generated, flags=re.DOTALL | re.IGNORECASE)
+    # 1. Fenced code block
+    fenced = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL | re.IGNORECASE)
     if fenced:
         candidates.append(fenced.group(1))
+
+    # 2. Bare JSON array anywhere in the text
+    start = raw.find("[")
+    end = raw.rfind("]")
+    if start != -1 and end > start:
+        candidates.append(raw[start : end + 1])
 
     for candidate in candidates:
         try:
@@ -146,100 +159,142 @@ def _parse_generated_tasks(generated: str) -> List[Dict[str, Any]]:
                                 "description": desc[:500],
                                 "assignee_hint": item.get("assignee_hint") or item.get("assignee"),
                                 "deadline_hint": item.get("deadline_hint") or item.get("deadline"),
-                                "source": "llm",
+                                "source": "openrouter",
                             })
             if tasks:
                 return tasks
         except Exception:
             continue
 
+    # 3. Line-by-line text fallback
     tasks = []
-    for line in generated.splitlines():
-        line = line.strip().lstrip("-•*0123456789. )")
+    for line in raw.splitlines():
+        line = line.strip().lstrip("-•*0123456789.) ")
         if len(line) > 15 and _looks_like_task(line):
             tasks.append({
                 "description": line[:500],
                 "assignee_hint": _guess_assignee(line),
                 "deadline_hint": _guess_deadline(line),
-                "source": "llm_text",
+                "source": "openrouter_text",
             })
     return tasks
 
 
+# ---------------------------------------------------------------------------
+# OpenRouter API call
+# ---------------------------------------------------------------------------
+
+_OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+_SYSTEM_PROMPT = (
+    "You are an assistant that extracts action items from meeting transcripts. "
+    "Return ONLY a valid JSON array — no prose, no markdown fences, no commentary. "
+    "Each element must be a JSON object with exactly these keys: "
+    '"description" (string), "assignee_hint" (string or null), "deadline_hint" (string or null). '
+    "If no tasks are found, return an empty array []."
+)
+
+_USER_TEMPLATE = (
+    "Extract all action items from the following meeting transcript.\n\n"
+    "Transcript:\n{transcript}"
+)
+
+
+async def _call_openrouter(transcript: str) -> List[Dict[str, Any]]:
+    api_key: str = getattr(settings, "OPENROUTER_API_KEY", "") or ""
+    if not api_key:
+        raise RuntimeError("OPENROUTER_API_KEY is not set")
+
+    model: str = getattr(settings, "OPENROUTER_TASK_MODEL", "openrouter/free") or "openrouter/free"
+
+    payload = {
+        "model": model,
+        "temperature": 0,
+        "max_tokens": 1024,
+        "messages": [
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": _USER_TEMPLATE.format(transcript=transcript[:4000])},
+        ],
+    }
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        # Optional: helps OpenRouter leaderboard attribution
+        "HTTP-Referer": "https://github.com/your-org/meeting-secretary",
+        "X-Title": "Meeting Secretary",
+    }
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(_OPENROUTER_URL, json=payload, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+
+    actual_model = data.get("model", model)
+    logger.info("[TASK] OpenRouter model used: %s", actual_model)
+
+    raw = data["choices"][0]["message"]["content"] or "[]"
+    logger.debug("[TASK] Raw output (first 400 chars): %s", raw[:400])
+
+    tasks = _parse_llm_output(raw)
+    # Stamp actual model for traceability
+    for t in tasks:
+        t["model"] = actual_model
+    return tasks
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
 async def extract_tasks(transcript: str) -> List[Dict[str, Any]]:
     """
-    Extract tasks using T5 where possible, with a reliable heuristic fallback.
+    Main entry point.  Called by routes and data-generation scripts.
+
+    Strategy:
+        1. If TASK_PROVIDER == "rules" → rule-based only (no network).
+        2. Otherwise, try OpenRouter; on any failure fall back to rules.
+        3. Merge LLM + rule results when LLM returns < 2 items.
+        4. Deduplicate and cap at 20 tasks.
     """
     transcript = (transcript or "").strip()
     if not transcript:
         return []
 
+    provider: str = getattr(settings, "TASK_PROVIDER", "openrouter") or "openrouter"
+
     fallback_tasks = _extract_tasks_simple(transcript)
 
-    try:
-        tokenizer, model = load_local_model()
-    except Exception as e:
-        logger.warning("[TASK] Model load failed, using rule-based fallback: %s", e)
+    if provider == "rules":
+        logger.info("[TASK] Using rule-based extraction (TASK_PROVIDER=rules)")
         return fallback_tasks
 
-    prompt = (
-        "Extract action items from this meeting transcript. "
-        "Return ONLY a JSON array. Each item must contain keys: "
-        "description, assignee_hint, deadline_hint. "
-        "Use null for unknown values. "
-        "Do not add commentary.\n\n"
-        f"Transcript:\n{transcript[:3000]}"
-    )
-
+    # --- OpenRouter path ---
     try:
-        inputs = tokenizer(
-            prompt,
-            return_tensors="pt",
-            max_length=min(settings.MAX_TASK_MODEL_TOKENS, 1024),
-            truncation=True,
-            padding=False,
-        )
-
-        device = next(model.parameters()).device
-        inputs = {k: v.to(device) for k, v in inputs.items()}
-
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=256,
-                do_sample=False,
-                num_beams=2,
-                pad_token_id=tokenizer.pad_token_id,
-            )
-
-        generated = tokenizer.batch_decode(outputs, skip_special_tokens=True)[0]
-        logger.info("[TASK] Raw output (first 400 chars): %s", generated[:400])
-
-        tasks = _parse_generated_tasks(generated)
-
-        if not tasks:
-            return fallback_tasks
-
-        if len(tasks) < 2 and fallback_tasks:
-            combined = tasks + fallback_tasks
-        else:
-            combined = tasks
-
-        unique = []
-        seen = set()
-        for t in combined:
-            key = _normalize_space((t.get("description") or "").lower())[:120]
-            if key and key not in seen:
-                seen.add(key)
-                unique.append(t)
-
-        return unique[:20]
-
-    except Exception as e:
-        logger.exception("[TASK] Extraction failed, falling back to heuristic rules: %s", e)
+        llm_tasks = await _call_openrouter(transcript)
+    except Exception as exc:
+        logger.warning("[TASK] OpenRouter failed, using rule-based fallback: %s", exc)
         return fallback_tasks
+
+    if not llm_tasks:
+        logger.info("[TASK] LLM returned no tasks; using fallback")
+        return fallback_tasks
+
+    # Merge when LLM result is suspiciously thin
+    combined = llm_tasks if len(llm_tasks) >= 2 else llm_tasks + fallback_tasks
+
+    # Deduplicate
+    unique: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for t in combined:
+        key = _normalize_space((t.get("description") or "").lower())[:120]
+        if key and key not in seen:
+            seen.add(key)
+            unique.append(t)
+
+    return unique[:20]
 
 
 def extract_tasks_rule_based(transcript: str) -> List[Dict[str, Any]]:
-    """Compatibility wrapper for rule-based extraction."""
+    """Sync compatibility shim for scripts that don't use asyncio."""
     return _extract_tasks_simple(transcript)
