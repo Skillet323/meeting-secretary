@@ -4,89 +4,25 @@
   "transcript_source": "ami",
   "tasks": [
     {
-      "description": "Identify key action items related to meeting agenda",
-      "assignee_hint": "Team members to follow up on",
-      "deadline_hint": "None specified",
-      "source": "openrouter",
-      "model": "liquid/lfm-2.5-1.2b-instruct-20260120:free"
+      "description": "Write up meeting notes and distribute them to the team.",
+      "assignee_hint": "Adam",
+      "deadline_hint": "before next meeting in 30 minutes",
+      "source": "manual_annotation",
+      "source_snippet": "I'll write up what we've um kind of quickly done, and I'll get that out to everybody."
     },
     {
-      "description": "Course, we'll have to go into a bit more um detail than that, but uh personally I think that the original is gonna be a very key aspect to this design.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
+      "description": "Decide on basic functionality and how the user interface might work.",
+      "assignee_hint": "All",
+      "deadline_hint": "before next meeting in 30 minutes",
+      "source": "manual_annotation",
+      "source_snippet": "we'll have to try and decide on some of the basic functionality, um, how the user interface might work"
     },
     {
-      "description": "I will make this quick, since we don't have much time.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "B: You should also l um",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "Should have good range.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "If we're aiming for fifty million Euros we're gonna have to be selling an awful lot of them.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "B: , awful lot need to be sold.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "A: , um let's say oh oh um, or um you know you pr uh you press uh say the play button for the D_V_D_ player and it turns the T_V_ on and onto the right channel as well, um",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "C: Y you don't have to be uh really clever to use a remote control.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "B: got a couple of ideas, we can we'll have to work fast, um, alright as you can see we've got thirty minutes until the next meeting, so we'll have to try and decide on some of the basic functionality, um, how the user interface might work, that'll be a key aspect especially if the idea of um some kind of macros facility because you have to program it, you have to have a lot of response back, or at least some kind",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "B: And we're gonna maybe n try and have to figure out",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "D: Well when you're talking about gaming and stuff, do you think they should have some sort of",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "A: sl slightly sort of biomorphic in form, uh which it would need to be to sort of conform to the shape of the hand more efficiently anyway.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "That's definitely something that we should be able to do quite easily.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
+      "description": "Figure out what the user wants for the remote control.",
+      "assignee_hint": "All",
+      "deadline_hint": "before next meeting in 30 minutes",
+      "source": "manual_annotation",
+      "source_snippet": "figure out what the user wants"
     }
   ],
   "audio_file_path": "/workspaces/meeting-secretary/data/audio/ES2003a.Mix-Headset.wav",

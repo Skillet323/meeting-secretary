@@ -4,100 +4,25 @@
   "transcript_source": "ami",
   "tasks": [
     {
-      "description": "A: Oh I see, so we shouldn't really be",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
+      "description": "Work on the working design of the remote control.",
+      "assignee_hint": "Nick",
+      "deadline_hint": "before next meeting in 30 minutes",
+      "source": "manual_annotation",
+      "source_snippet": "Right. So we've got um the working design for I_D_."
     },
     {
-      "description": "So we will um.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
+      "description": "Work on the technical functions design for the user interface.",
+      "assignee_hint": "Louisa",
+      "deadline_hint": "before next meeting in 30 minutes",
+      "source": "manual_annotation",
+      "source_snippet": "For U_I_D_ the technical functions design."
     },
     {
-      "description": "C: to do this right now, do you think, or",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "I think that I would have to say that my favourite animal is the cat.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "C: because they're very independent, uh they're very intelligent, compared to dogs maybe.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "A: I don't see as there's any need to.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "A: And so depending what the uh the overhead uh costs are will determine uh how many units we're uh looking to sell or projecting to sell at this point in time.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "So whereas in the past you'd have to get up to change the channel, now you have to get up to sort of pick up the remote.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "So so I don't we need to sort of maybe think about how um we could maybe uh develop a remote control which moves around the room.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "So uh we have to uh start winding up.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "D: If you just click return it should be okay.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "D: If you hit just hit return and it should get rid of the message.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "Specific instructions will be sent to you by your person by your personal coach.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "B: should just",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "So we will depart.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "We will stay here and uh and break off.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
+      "description": "Work on the user requirement specification for marketing.",
+      "assignee_hint": "Robin",
+      "deadline_hint": "before next meeting in 30 minutes",
+      "source": "manual_annotation",
+      "source_snippet": "Marketing, the user requirement specification."
     }
   ],
   "audio_file_path": "/workspaces/meeting-secretary/data/audio/ES2014a.Mix-Headset.wav",

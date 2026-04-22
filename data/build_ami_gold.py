@@ -11,7 +11,13 @@ from typing import Any
 from xml.etree import ElementTree as ET
 
 TURN_GAP_SEC = 1.2
+import logging
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s",
+)
+logger = logging.getLogger(__name__)
 
 def meeting_ref_from_audio(audio_path: Path) -> str:
     stem = audio_path.stem  # ES2002a.Mix-Headset
@@ -184,16 +190,27 @@ def heuristic_tasks(transcript: str) -> list[dict[str, Any]]:
     return tasks
 
 
-async def extract_tasks_auto(transcript: str, mode: str = "backend") -> list[dict[str, Any]]:
+async def extract_tasks_auto(transcript: str, mode: str = "backend", file_ref: str | None = None):
     if mode == "backend":
         backend_extract_tasks = load_backend_extractor()
         if backend_extract_tasks is not None:
             try:
-                return await backend_extract_tasks(transcript)
+                result = await backend_extract_tasks(transcript, return_debug=True, trace_id=file_ref)
+                return result
+            except TypeError:
+                # если вдруг старый backend-код ещё без return_debug
+                tasks = await backend_extract_tasks(transcript)
+                return tasks, {"provider": "backend", "file_ref": file_ref}
             except Exception as e:
                 print(f"[WARN] backend extractor failed, fallback to heuristic: {e}")
 
-    return heuristic_tasks(transcript)
+    tasks = heuristic_tasks(transcript)
+    return tasks, {
+        "provider": "rules",
+        "file_ref": file_ref,
+        "raw_preview": None,
+        "parsed_tasks": len(tasks),
+    }
 
 
 def build_record(audio_path: Path, words_files: list[Path], tasks: list[dict[str, Any]]) -> dict[str, Any]:
@@ -250,6 +267,12 @@ async def main():
         default="backend",
         help="backend = использовать extractor из проекта; rules = только эвристика",
     )
+    parser.add_argument(
+        "--delay-sec",
+        type=float,
+        default=5.0,
+        help="Pause between OpenRouter calls to avoid rate limits",
+    )
     args = parser.parse_args()
 
     audio_dir = Path(args.audio_dir).resolve()
@@ -264,10 +287,8 @@ async def main():
         words_files = item["words"]
 
         if audio_path is None:
-            print(f"[SKIP] {ref}: audio file not found")
             continue
         if not words_files:
-            print(f"[SKIP] {ref}: words XML not found")
             continue
 
         # Если есть несколько XML-файлов по спикерам — всё объединяем в один transcript.
@@ -277,14 +298,27 @@ async def main():
             all_tokens.extend(parse_words_xml(xml_path))
         transcript = build_transcript(all_tokens)
 
-        tasks = await extract_tasks_auto(transcript, mode=args.task_mode)
+        tasks, debug = await extract_tasks_auto(transcript, mode=args.task_mode, file_ref=ref)
 
         record = build_record(audio_path, words_files, tasks)
         record["transcript"] = transcript
 
         out_path = out_dir / f"{ref}.json"
         out_path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"[OK] {ref}: {out_path.name} | words_files={len(words_files)} | tasks={len(tasks)}")
+
+        provider = debug.get("provider", "unknown")
+        model = debug.get("model", "-")
+        parse_stage = debug.get("parse_stage", "-")
+        raw_preview = debug.get("raw_preview") or ""
+
+        print(f"\n[{ref}] provider={provider} model={model} parse={parse_stage}")
+        if raw_preview:
+            print(f"[{ref}] raw:\n{raw_preview}\n")
+        print(f"[{ref}] tasks={len(tasks)}")
+        for i, t in enumerate(tasks[:10], 1):
+            print(f"  {i}. {t.get('description')} | assignee={t.get('assignee_hint')} | deadline={t.get('deadline_hint')} | source={t.get('source')}")
+
+        await asyncio.sleep(args.delay_sec)
 
 if __name__ == "__main__":
     asyncio.run(main())

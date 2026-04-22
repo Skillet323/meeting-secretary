@@ -4,125 +4,18 @@
   "transcript_source": "ami",
   "tasks": [
     {
-      "description": "[Extracted Action Items]",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "openrouter_text",
-      "model": "liquid/lfm-2.5-1.2b-instruct-20260120:free"
+      "description": "Prepare PowerPoint presentation for the next meeting.",
+      "assignee_hint": "Sarah",
+      "deadline_hint": "before next meeting in 30 minutes",
+      "source": "manual_annotation",
+      "source_snippet": "I get to do another fantastic PowerPoint presentation"
     },
     {
-      "description": "this is our agenda, um we will do some stuff, get to know each other a bit better to feel more comfortable with each other.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "Um then we'll go do tool training, talk about the project plan, discuss our own ideas and everything um and we've got twenty five minutes to do that, as far as I can understand.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "Um, we want it to be original, something that's uh people haven't thought of, that's not out in the shops, um, trendy, appealing to a wide market, but you know, not a hunk of metal, and user-friendly, grannies to kids, maybe even pooches should be able to use it.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "um, first is the functional design, um this is where we all go off and do our individual work, um what needs need to be fulfilled by the product, um what effects the product has to have and how it's actually going to do that.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "D: Please, please",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "C: you guys have chosen the ones I wanted to do, I'll have",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "C: to have to",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "C: Okay, now I'm gonna have to change what is was originally gonna be because that looks like a beak now, so.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "C: uh I'll have to think on the spot of uh things that it is.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "D: Should we be making notes of this?",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "B: , I don't think we have to I don't think it's a case of worrying about different languages and things like that",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "B: you programme each of your things into, but that kept losing the signals so we'd have to re-programme it every now and again.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "B: had something to do with it, but that was quite good, the fact that you could",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "C: it just needs to be as long as it's sort of self-intuitive and you can can work out",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "C: what everything's doing, 'cause I mean, menus on sort of new phones now they've sort of got all these pictures and stuff which makes it fairly obvious what you're trying to do.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "B: got a new one and I was trying to do things with it and I just kept getting lost, but that's just me.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "C: have to sort of keep",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "D: we need to make it look as fashionable and stylish as a mobile phone, it can still be lightweight plastic",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "B: and I get to do another fantastic PowerPoint presentation",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
+      "description": "Complete individual work on functional, conceptual, and detailed design phases.",
+      "assignee_hint": "All",
+      "deadline_hint": "before next meeting in 30 minutes",
+      "source": "manual_annotation",
+      "source_snippet": "we're all gonna go off and do our individual things"
     }
   ],
   "audio_file_path": "/workspaces/meeting-secretary/data/audio/ES2004a.Mix-Headset.wav",

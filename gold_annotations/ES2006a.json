@@ -4,142 +4,25 @@
   "transcript_source": "ami",
   "tasks": [
     {
-      "description": "Um then we need to go through the specifics of our project plan um and discuss come up with some preliminary ideas about it.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
+      "description": "Work on the working and technical design of the product and identify its components.",
+      "assignee_hint": "Gaurav",
+      "deadline_hint": "before next meeting in 30 minutes",
+      "source": "manual_annotation",
+      "source_snippet": "you're looking at the working design, you're looking at the technical functions design"
     },
     {
-      "description": "So we've got twenty five minutes to do that, that's until eleven twenty five.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
+      "description": "Develop the interface concept and detailed user interface design.",
+      "assignee_hint": "Maarika",
+      "deadline_hint": "before next meeting in 30 minutes",
+      "source": "manual_annotation",
+      "source_snippet": "come up with uh interface concept and then in the last um stage I will be responsible for the int infa for the user interface design"
     },
     {
-      "description": "What we're aiming to do is to create a new remote control for a television.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "C: Um and then the detailed design will come after that.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "C: what specific things it it has to do but the conceptual design is um perhaps bigger than that and includes the",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "Um what I'd like us to do now is simultaneously introduce ourselves and start using some of the tools that we're using for for the project, specifically the whiteboard.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "C: don't have to",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "B: And one day you'll be able to getical genetically modify them and they will come in pink.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "Oh, sorry, maybe I should have shouldn't have said it beforehand but",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "Um what it has to do with with my role in the project is hard to say.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "D: so um in the different um stages of the design, so at first I will be responsible for um for yeah, designing the technical functions of the um um of the remote control uh then in the in the conceptual design stage I need to um come up with uh interface concept and then in the last um stage I will be responsible for the int infa for the user interface design.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "Um my my role in the project is um uh the industrial designer, so I'm supposed to design all the details of of the product um ho how it works and whatever it'll mm take during the functional role, what are the various functions that have to be performed by it uh during the um conceptual design, what are the various components of it and um finally, I'm not too sure what was the last part.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "Um the detailed design, I I guess it will again be the identification of the components and how they integrate with each other.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "C: So, let's see what's next in the PowerPoint presentation.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "We've got um we're planning to sell these remote controls for let's make that go away, that means we've got five minutes.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "C: Um so to do that our finance people estimate that we need production costs of maximum twelve and a half Euro so that we can reach that profit target.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "A: uh one thing was that was mentioned was that it should be mm trendy, user friendly and original so um I think your point is relevant as far as the originality is concerned, that we should provide some features that are quite unique",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "A: will be used ten percent of the time",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "A: think that um it's a huge problem for remote controls anyway, battery life, uh every now and then you need to replace the batteries",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "D: e even though it has to be re original we shouldn't uh go like too far away from from the usual ones, because otherwise",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "D: users will just have a",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "So, i it should kind of fit in as well, and",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
-    },
-    {
-      "description": "C: Okay, so we need to wrap it up now, so that we can go away and get on with some of this.",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "rule_based"
+      "description": "Prepare the user requirements specification for the functional design phase.",
+      "assignee_hint": "Cat",
+      "deadline_hint": "before next meeting in 30 minutes",
+      "source": "manual_annotation",
+      "source_snippet": "user g requirements specification of the functional design"
     }
   ],
   "audio_file_path": "/workspaces/meeting-secretary/data/audio/ES2006a.Mix-Headset.wav",

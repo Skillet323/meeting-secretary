@@ -4,39 +4,18 @@
   "transcript_source": "ami",
   "tasks": [
     {
-      "description": "Identify the key action items related to remote control features and design improvements.",
-      "assignee_hint": "C",
-      "deadline_hint": "none",
-      "source": "openrouter",
-      "model": "liquid/lfm-2.5-1.2b-instruct-20260120:free"
+      "description": "Research existing remote controls, propose shapes and colors, and investigate manufacturing methods and materials.",
+      "assignee_hint": "Industrial Designer",
+      "deadline_hint": "before next meeting in 30 minutes",
+      "source": "manual_annotation",
+      "source_snippet": "you do the looking around at other remote controls... come up with sort of shapes and suggested shades or whatever... look into um basically how how it's made... what sort of materials are available to you whatever"
     },
     {
-      "description": "Discuss the need to evaluate competitors and market prices for remote controls.",
-      "assignee_hint": "B",
-      "deadline_hint": "none",
-      "source": "openrouter",
-      "model": "liquid/lfm-2.5-1.2b-instruct-20260120:free"
-    },
-    {
-      "description": "Consider potential design changes such as size, color, and functionality to enhance user experience.",
-      "assignee_hint": "A",
-      "deadline_hint": "null",
-      "source": "openrouter",
-      "model": "liquid/lfm-2.5-1.2b-instruct-20260120:free"
-    },
-    {
-      "description": "Review the feasibility of setting a price point around 20-25 Euros for the remote control.",
-      "assignee_hint": "A",
-      "deadline_hint": "null",
-      "source": "openrouter",
-      "model": "liquid/lfm-2.5-1.2b-instruct-20260120:free"
-    },
-    {
-      "description": "Analyze the importance of having a good look and good design to attract customers.",
-      "assignee_hint": "D",
-      "deadline_hint": "null",
-      "source": "openrouter",
-      "model": "liquid/lfm-2.5-1.2b-instruct-20260120:free"
+      "description": "Analyze competitor products, pricing, and design features.",
+      "assignee_hint": "Marketing Expert",
+      "deadline_hint": "before next meeting in 30 minutes",
+      "source": "manual_annotation",
+      "source_snippet": "And you look at competition and design."
     }
   ],
   "audio_file_path": "/workspaces/meeting-secretary/data/audio/ES2005a.Mix-Headset.wav",

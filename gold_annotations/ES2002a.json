@@ -4,46 +4,25 @@
   "transcript_source": "ami",
   "tasks": [
     {
-      "description": "Introduce project manager and team members",
-      "assignee_hint": "Laura (project manager)",
-      "deadline_hint": null,
-      "source": "openrouter",
-      "model": "liquid/lfm-2.5-1.2b-instruct-20260120:free"
+      "description": "Work on the actual working design of the remote control.",
+      "assignee_hint": "David",
+      "deadline_hint": "before next meeting in 30 minutes",
+      "source": "manual_annotation",
+      "source_snippet": "as the industrial designer, you're gonna be working on you know the actual working design of it"
     },
     {
-      "description": "Confirm attendance and roles",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "openrouter",
-      "model": "liquid/lfm-2.5-1.2b-instruct-20260120:free"
+      "description": "Define technical functions and determine what the user interface will actually do.",
+      "assignee_hint": "Craig",
+      "deadline_hint": "before next meeting in 30 minutes",
+      "source": "manual_annotation",
+      "source_snippet": "for user interface, technical functions, I guess that's you know like what we've been talking about, what it'll actually do"
     },
     {
-      "description": "Discuss project brief and expectations",
-      "assignee_hint": null,
-      "deadline_hint": "Next twenty five minutes",
-      "source": "openrouter",
-      "model": "liquid/lfm-2.5-1.2b-instruct-20260120:free"
-    },
-    {
-      "description": "Clarify roles and responsibilities",
-      "assignee_hint": null,
-      "deadline_hint": null,
-      "source": "openrouter",
-      "model": "liquid/lfm-2.5-1.2b-instruct-20260120:free"
-    },
-    {
-      "description": "Review and confirm design stages",
-      "assignee_hint": null,
-      "deadline_hint": "After kick-off",
-      "source": "openrouter",
-      "model": "liquid/lfm-2.5-1.2b-instruct-20260120:free"
-    },
-    {
-      "description": "Confirm attendance and next steps",
-      "assignee_hint": null,
-      "deadline_hint": "Immediate after meeting",
-      "source": "openrouter",
-      "model": "liquid/lfm-2.5-1.2b-instruct-20260120:free"
+      "description": "Analyze product requirements and determine what they need to fulfill.",
+      "assignee_hint": "Andrew",
+      "deadline_hint": "before next meeting in 30 minutes",
+      "source": "manual_annotation",
+      "source_snippet": "marketing executive, you'll be just thinking about what it actually what, you know, what requirements it has to has to fulfil"
     }
   ],
   "audio_file_path": "/workspaces/meeting-secretary/data/audio/ES2002a.Mix-Headset.wav",
