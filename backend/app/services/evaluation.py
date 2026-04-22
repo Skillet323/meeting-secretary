@@ -1,10 +1,12 @@
+# backend/app/services/evaluation.py
 from __future__ import annotations
 
 import json
 import logging
 import re
-from typing import Dict, List, Tuple, Optional, Any
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 from sqlmodel import Session, select
 
 from ..models import GoldStandard, EvaluationRun, EvaluationMetric, Meeting, Task, ProcessingMetrics
@@ -28,17 +30,19 @@ def evaluate_transcription(reference: str, hypothesis: str) -> Tuple[float, floa
         from jiwer import wer, cer
         return float(wer(ref, hyp)), float(cer(ref, hyp))
     except Exception:
-        # Fallback: normalized token/character coverage approximation
         ref_n = normalize_text(ref)
         hyp_n = normalize_text(hyp)
         if not ref_n:
             return 1.0, 1.0
+
         ref_tokens = ref_n.split()
         hyp_tokens = set(hyp_n.split())
         token_cov = len(set(ref_tokens) & hyp_tokens) / max(1, len(set(ref_tokens)))
+
         ref_chars = set(ref_n)
         hyp_chars = set(hyp_n)
         char_cov = len(ref_chars & hyp_chars) / max(1, len(ref_chars))
+
         return 1.0 - token_cov, 1.0 - char_cov
 
 
@@ -67,6 +71,7 @@ def _best_match_by_jaccard(pred_desc: str, gold_tasks: List[dict], used: set[int
         score = inter / union if union else 0.0
         if score > best_score:
             best_idx, best_score = i, score
+
     return best_idx, best_score
 
 
@@ -99,18 +104,17 @@ def evaluate_tasks(pred_tasks: List[dict], gold_tasks: List[dict]) -> Dict[str, 
     for pred_idx, gold_idx in matches.items():
         pred = pred_tasks[pred_idx]
         gold = gold_tasks[gold_idx]
+
         if _task_name_like(pred.get("assignee_hint", "")) == _task_name_like(gold.get("assignee_hint", "")):
             assignee_correct += 1
+
         if _task_name_like(pred.get("deadline_hint", "")) == _task_name_like(gold.get("deadline_hint", "")):
             deadline_correct += 1
 
     assignee_accuracy = assignee_correct / tp if tp else None
     deadline_accuracy = deadline_correct / tp if tp else None
 
-    # Hallucination proxy: very short descriptions are often bad extractions.
-    hallucination_rate = sum(
-        1 for t in pred_tasks if len(_task_desc(t).split()) < 3
-    ) / max(1, len(pred_tasks))
+    hallucination_rate = sum(1 for t in pred_tasks if len(_task_desc(t).split()) < 3) / max(1, len(pred_tasks))
 
     return {
         "task_set_f1": f1,
@@ -124,24 +128,27 @@ def evaluate_tasks(pred_tasks: List[dict], gold_tasks: List[dict]) -> Dict[str, 
         "matched_tasks": tp,
     }
 
+
 def meeting_ref_from_filename(filename: str) -> str:
     stem = Path(filename).stem  # ES2002a.Mix-Headset
     return re.sub(r"\.Mix-Headset$", "", stem)
 
+
 def evaluate_meeting(meeting: Meeting, session: Session) -> tuple[EvaluationRun, dict]:
     """
-    Evaluate processed meeting against a gold standard with meeting_ref == meeting.id.
+    Evaluate processed meeting against a gold standard with meeting_ref == filename stem.
     Creates EvaluationRun and EvaluationMetric rows.
     """
     meeting_info = json.loads(meeting.info) if meeting.info else {}
     filename = meeting_info.get("filename", "")
-    meeting_ref = meeting_ref_from_filename(filename)
+    meeting_ref = meeting_ref_from_filename(filename) if filename else ""
 
     gold = session.exec(
         select(GoldStandard).where(GoldStandard.meeting_ref == meeting_ref)
     ).first()
     if not gold:
         raise ValueError(f"No gold standard found for meeting_ref={meeting_ref}")
+
     try:
         gold_tasks = json.loads(gold.tasks_json) if gold.tasks_json else []
     except Exception:
@@ -176,10 +183,12 @@ def evaluate_meeting(meeting: Meeting, session: Session) -> tuple[EvaluationRun,
         "overall_quality_score": overall,
     }
 
-    meeting_info = json.loads(meeting.info) if meeting.info else {}
     latest_metrics = session.exec(
-        select(ProcessingMetrics).where(ProcessingMetrics.meeting_id == meeting.id).order_by(ProcessingMetrics.created_at.desc())
+        select(ProcessingMetrics)
+        .where(ProcessingMetrics.meeting_id == meeting.id)
+        .order_by(ProcessingMetrics.created_at.desc())
     ).first()
+
     model_whisper = meeting_info.get("model_whisper") or (latest_metrics.model_whisper if latest_metrics else "unknown")
     model_task = meeting_info.get("model_task") or (latest_metrics.model_task if latest_metrics else "unknown")
 
@@ -195,17 +204,19 @@ def evaluate_meeting(meeting: Meeting, session: Session) -> tuple[EvaluationRun,
     session.commit()
     session.refresh(run)
 
-    for metric_name, value in {
+    metric_values = {
         "wer": wer,
         "cer": cer,
         "task_set_f1": task_f1,
         "task_set_precision": task_metrics["task_set_precision"],
         "task_set_recall": task_metrics["task_set_recall"],
-        "assignee_accuracy": assignee_acc,
+        "assignee_accuracy": assign_acc,
         "deadline_accuracy": deadline_acc,
         "hallucination_rate": task_metrics["hallucination_rate"],
         "overall_quality_score": overall,
-    }.items():
+    }
+
+    for metric_name, value in metric_values.items():
         if value is None:
             continue
         session.add(
@@ -221,7 +232,6 @@ def evaluate_meeting(meeting: Meeting, session: Session) -> tuple[EvaluationRun,
 
 
 def load_gold_dataset(gold_dir: str) -> list[dict]:
-    from pathlib import Path
     gold_path = Path(gold_dir)
     data = []
     for json_file in gold_path.glob("*.json"):
