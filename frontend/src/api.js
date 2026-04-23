@@ -2,21 +2,18 @@ import axios from "axios";
 
 const api = axios.create({
   baseURL: "/api",
-  // Increase timeout to 10 minutes for large file uploads
   timeout: 600000,
 });
 
 export const uploadMeeting = async (formData, onProgress = null) => {
   const response = await api.post("/upload_meeting", formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data'
-    },
+    headers: { "Content-Type": "multipart/form-data" },
     onUploadProgress: (progressEvent) => {
-      if (onProgress) {
+      if (onProgress && progressEvent.total) {
         const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
         onProgress(percentCompleted);
       }
-    }
+    },
   });
   return response.data;
 };
@@ -43,7 +40,6 @@ export const getRecentMetrics = async (limit = 10) => {
   return response.data;
 };
 
-
 export const getMeetings = async (limit = 10) => {
   const response = await api.get(`/meetings?limit=${limit}`);
   return response.data;
@@ -51,5 +47,15 @@ export const getMeetings = async (limit = 10) => {
 
 export const getEvaluations = async (limit = 10) => {
   const response = await api.get(`/evaluations?limit=${limit}`);
+  return response.data;
+};
+
+export const getEvaluationDetails = async (runId) => {
+  const response = await api.get(`/evaluation/${runId}`);
+  return response.data;
+};
+
+export const evaluateMeeting = async (meetingId) => {
+  const response = await api.post(`/evaluate/meeting/${meetingId}`);
   return response.data;
 };

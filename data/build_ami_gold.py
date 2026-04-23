@@ -302,6 +302,16 @@ async def main():
 
         record = build_record(audio_path, words_files, tasks)
         record["transcript"] = transcript
+        record.update({
+            "task_provider": debug.get("provider"),
+            "task_model": debug.get("model"),
+            "task_parse_stage": debug.get("parse_stage"),
+            "task_fallback_used": debug.get("fallback_used"),
+            "task_fallback_merged": debug.get("fallback_merged"),
+            "task_llm_tasks": debug.get("llm_tasks") or debug.get("parsed_tasks"),
+            "task_final_tasks": debug.get("final_tasks"),
+            "task_raw_preview": debug.get("raw_preview"),
+        })
 
         out_path = out_dir / f"{ref}.json"
         out_path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")

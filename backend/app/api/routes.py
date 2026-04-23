@@ -13,6 +13,7 @@ from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query, 
 from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlmodel import Session, select
 from ..db import init_db, get_session, engine
+from ..config import settings
 from ..models import Meeting, Task, Participant, Rule, ProcessingMetrics
 from ..services.transcription import transcribe_from_bytes as transcribe
 from ..services.task_extraction import extract_tasks as extract
@@ -83,39 +84,62 @@ async def _process_meeting_background(meeting_id: int, audio_source: str, filena
     """Background task to process meeting with progress updates."""
     start_time = time.time()
     try:
-        # Initialize progress
         _update_meeting_progress(meeting_id, 0, "Initializing", "Starting processing")
 
         # Step 1: Transcription
         _update_meeting_progress(meeting_id, 10, "Loading model", "Loading Whisper model...")
         transcribe_start = time.time()
         res = transcribe(audio_source, filename)
-        transcript = res.get("text", "")
-        segments = res.get("segments", [])
-        language = res.get("language")
+        transcript = res.get("text", "") or ""
+        speaker_transcript = res.get("speaker_transcript") or transcript
+        speaker_aliases = res.get("speaker_aliases") or {}
+        segments = res.get("segments", []) or []
+        language = res.get("language") or "en"
         confidence = res.get("confidence")
+        has_diarization = bool(res.get("has_diarization", False))
         transcribe_time = time.time() - transcribe_start
+        duration_sec = float(segments[-1]["end"]) if segments else 0.0
         logger.info(f"Transcription completed: {transcribe_time:.2f}s, {len(segments)} segments, language={language}")
         _update_meeting_progress(meeting_id, 60, "Transcription", f"Transcribed {len(segments)} segments")
-        
-        # Step 2: Task extraction
+
+        # Step 2: Task extraction (use speaker-labeled transcript if available)
         _update_meeting_progress(meeting_id, 65, "Loading model", "Loading task extraction model...")
         task_start = time.time()
-        tasks_list = await extract(transcript)
+        task_ref = Path(filename).stem if filename else str(meeting_id)
+        tasks_list, task_debug = await extract(
+            speaker_transcript,
+            return_debug=True,
+            trace_id=task_ref,
+            meeting_ref=task_ref,
+            language=language,
+            duration_sec=duration_sec,
+        )
         task_time = time.time() - task_start
-        logger.info(f"Task extraction completed: {len(tasks_list)} tasks, {task_time:.2f}s")
+        logger.info(
+            "Task extraction completed: %d tasks, %.2fs, provider=%s, parse=%s, fallback=%s",
+            len(tasks_list),
+            task_time,
+            task_debug.get("provider"),
+            task_debug.get("parse_stage"),
+            task_debug.get("fallback_used"),
+        )
         _update_meeting_progress(meeting_id, 85, "Task extraction", f"Found {len(tasks_list)} tasks")
-        
+
         # Step 3: Assignment
         _update_meeting_progress(meeting_id, 88, "Assignment", "Assigning tasks to participants")
         assign_start = time.time()
         from ..db import Session as DBSession
+        metadata_for_assignment = {
+            "filename": filename,
+            "speaker_aliases": speaker_aliases,
+            "has_diarization": has_diarization,
+        }
         with DBSession(engine) as session:
-            assigned_tasks = assign(tasks_list, session)
+            assigned_tasks = assign(tasks_list, session, meeting_info=metadata_for_assignment)
         assign_time = time.time() - assign_start
         logger.info(f"Assignment completed: {assign_time:.2f}s")
         _update_meeting_progress(meeting_id, 95, "Assignment", "Tasks assigned")
-        
+
         # Step 4: Save full results
         metadata = {
             "filename": filename,
@@ -126,14 +150,24 @@ async def _process_meeting_background(meeting_id: int, audio_source: str, filena
             "task_time_sec": task_time,
             "assign_time_sec": assign_time,
             "segments_count": len(segments),
-            "has_diarization": res.get("has_diarization", False),
-            "model_whisper": os.environ.get("WHISPER_MODEL", "default"),
-            "model_task": os.environ.get("TASK_MODEL", "default"),
-            "segments": segments,  # Store segments for later retrieval
+            "has_diarization": has_diarization,
+            "speaker_aliases": speaker_aliases,
+            "speaker_transcript_present": bool(speaker_transcript and speaker_transcript != transcript),
+            "speaker_transcript_preview": speaker_transcript[:2000],
+            "model_whisper": settings.WHISPER_MODEL,
+            "model_task": task_debug.get("model") or (settings.OPENROUTER_TASK_MODEL if task_debug.get("provider") == "openrouter" else "rules"),
+            "task_provider": task_debug.get("provider"),
+            "task_parse_stage": task_debug.get("parse_stage"),
+            "task_fallback_used": task_debug.get("fallback_used"),
+            "task_fallback_merged": task_debug.get("fallback_merged"),
+            "task_llm_tasks": task_debug.get("llm_tasks"),
+            "task_final_tasks": task_debug.get("final_tasks"),
+            "task_raw_preview": task_debug.get("raw_preview"),
+            "segments": segments,
             "status": "completed",
             "progress": 100,
             "current_stage": "Completed",
-            "message": "All done"
+            "message": "All done",
         }
         with DBSession(engine) as session:
             meeting = session.get(Meeting, meeting_id)
@@ -141,21 +175,19 @@ async def _process_meeting_background(meeting_id: int, audio_source: str, filena
                 meeting.transcript = transcript
                 meeting.info = json.dumps(metadata, ensure_ascii=False)
                 session.add(meeting)
-                # Save tasks
                 for t in assigned_tasks:
                     task = Task(
                         meeting_id=meeting.id,
-                        description=t["description"][:500],
+                        description=str(t["description"])[:500],
                         assignee=t.get("assignee"),
-                        deadline=t.get("deadline_hint"),
-                        raw=json.dumps(t, ensure_ascii=False)
+                        deadline=t.get("deadline_hint") or t.get("deadline"),
+                        raw=json.dumps(t, ensure_ascii=False),
                     )
                     session.add(task)
-                # Save metrics
                 metrics = ProcessingMetrics(
                     meeting_id=meeting.id,
                     audio_size_bytes=audio_size_bytes or 0,
-                    audio_duration_sec=segments[-1]["end"] if segments else 0,
+                    audio_duration_sec=duration_sec,
                     transcribe_latency_sec=transcribe_time,
                     task_latency_sec=task_time,
                     assign_latency_sec=assign_time,
@@ -164,24 +196,22 @@ async def _process_meeting_background(meeting_id: int, audio_source: str, filena
                     segments_count=len(segments),
                     tasks_count=len(assigned_tasks),
                     language=language,
-                    model_whisper=os.environ.get("WHISPER_MODEL", "default"),
-                    model_task=os.environ.get("TASK_MODEL", "default"),
-                    has_diarization=metadata["has_diarization"]
+                    model_whisper=settings.WHISPER_MODEL,
+                    model_task=task_debug.get("model") or (settings.OPENROUTER_TASK_MODEL if task_debug.get("provider") == "openrouter" else "rules"),
+                    has_diarization=has_diarization,
                 )
                 session.add(metrics)
                 session.commit()
         total_time = time.time() - start_time
         logger.info(f"Meeting {meeting_id} fully processed in {total_time:.2f}s")
-        
-        # Trigger webhooks asynchronously
+
         try:
             await trigger_webhooks(meeting_id, assigned_tasks)
         except Exception as e:
             logger.warning(f"Webhook trigger failed: {e}")
-            
+
     except Exception as e:
         logger.exception(f"Processing failed for meeting {meeting_id}: {e}")
-        # Update status to failed
         _update_meeting_progress(meeting_id, 0, "Error", str(e), status="failed")
     finally:
         if audio_source and os.path.exists(audio_source):
@@ -240,9 +270,9 @@ def get_metrics(limit: int = Query(10, ge=1, le=100), session: Session = Depends
 # === Meeting Upload & Processing ===
 @router.post("/upload_meeting")
 async def upload_meeting(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     session: Session = Depends(get_session),
-    background_tasks: BackgroundTasks = None,
 ):
     """
     Upload audio file for asynchronous processing.
@@ -273,11 +303,7 @@ async def upload_meeting(
         session.refresh(meeting)
 
         # Kick off background processing
-        if background_tasks:
-            background_tasks.add_task(_process_meeting_background, meeting.id, temp_audio_path, filename, audio_size_bytes)
-        else:
-            logger.warning("No background_tasks; running processing synchronously")
-            await _process_meeting_background(meeting.id, temp_audio_path, filename, audio_size_bytes)
+        background_tasks.add_task(_process_meeting_background, meeting.id, temp_audio_path, filename, audio_size_bytes)
 
         return {"meeting_id": meeting.id, "status": "processing", "progress": 0, "message": "Upload successful, processing started"}
 
