@@ -98,7 +98,7 @@ async def _process_meeting_background(meeting_id: int, audio_source: str, filena
         confidence = res.get("confidence")
         has_diarization = bool(res.get("has_diarization", False))
         transcribe_time = time.time() - transcribe_start
-        duration_sec = float(segments[-1]["end"]) if segments else 0.0
+        duration_sec = max((float(s.get("end", 0.0)) for s in segments), default=0.0)
         logger.info(f"Transcription completed: {transcribe_time:.2f}s, {len(segments)} segments, language={language}")
         _update_meeting_progress(meeting_id, 60, "Transcription", f"Transcribed {len(segments)} segments")
 
@@ -113,6 +113,7 @@ async def _process_meeting_background(meeting_id: int, audio_source: str, filena
             meeting_ref=task_ref,
             language=language,
             duration_sec=duration_sec,
+            transcript_confidence=confidence,
         )
         task_time = time.time() - task_start
         logger.info(
@@ -133,6 +134,12 @@ async def _process_meeting_background(meeting_id: int, audio_source: str, filena
             "filename": filename,
             "speaker_aliases": speaker_aliases,
             "has_diarization": has_diarization,
+            "transcript_confidence": confidence,
+            "task_provider": task_debug.get("provider"),
+            "task_model": task_debug.get("model"),
+            "task_parse_stage": task_debug.get("parse_stage"),
+            "task_fallback_used": task_debug.get("fallback_used"),
+            "task_fallback_merged": task_debug.get("fallback_merged"),
         }
         with DBSession(engine) as session:
             assigned_tasks = assign(tasks_list, session, meeting_info=metadata_for_assignment)
@@ -150,9 +157,10 @@ async def _process_meeting_background(meeting_id: int, audio_source: str, filena
             "task_time_sec": task_time,
             "assign_time_sec": assign_time,
             "segments_count": len(segments),
+            
             "has_diarization": has_diarization,
             "speaker_aliases": speaker_aliases,
-            "speaker_transcript_present": bool(speaker_transcript and speaker_transcript != transcript),
+            "speaker_transcript_present": bool(speaker_transcript),
             "speaker_transcript_preview": speaker_transcript[:2000],
             "model_whisper": settings.WHISPER_MODEL,
             "model_task": task_debug.get("model") or (settings.OPENROUTER_TASK_MODEL if task_debug.get("provider") == "openrouter" else "rules"),

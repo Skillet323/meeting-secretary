@@ -21,6 +21,9 @@ _STOPWORDS = {
     "will", "with", "would", "you", "your", "the", "um", "uh", "okay", "right", "yeah",
 }
 
+def _transcript_quality_score(wer: float, cer: float) -> float:
+    # simple conservative score in [0..100]
+    return max(0.0, 100.0 * (1.0 - (0.7 * wer + 0.3 * cer)))
 
 def normalize_text(text: str) -> str:
     text = (text or "").lower()
@@ -87,7 +90,6 @@ def _best_match(pred_desc: str, gold_tasks: List[dict], used: set[int]) -> Tuple
         if score > best_score:
             best_idx, best_score = i, score
     return best_idx, best_score
-
 
 def evaluate_tasks(pred_tasks: List[dict], gold_tasks: List[dict]) -> Dict[str, Any]:
     """Compute task-set precision/recall/F1 plus assignee/deadline accuracy."""
@@ -228,12 +230,13 @@ def evaluate_meeting(meeting: Meeting, session: Session) -> tuple[EvaluationRun,
     ]
 
     wer, cer = evaluate_transcription(gold.transcript, meeting.transcript or "")
+    
     task_metrics = evaluate_tasks(pred_task_dicts, gold_tasks)
 
     assign_acc = float(task_metrics.get("assignee_accuracy") or 0.0)
     deadline_acc = float(task_metrics.get("deadline_accuracy") or 0.0)
     task_f1 = float(task_metrics.get("task_set_f1", 0.0))
-    transcript_quality = max(0.0, 1.0 - wer)
+    transcript_quality = _transcript_quality_score(wer, cer)
 
     # A blended score that does not collapse to zero when task matching is still immature.
     overall = (transcript_quality * 0.45 + task_f1 * 0.35 + assign_acc * 0.10 + deadline_acc * 0.10) * 100.0

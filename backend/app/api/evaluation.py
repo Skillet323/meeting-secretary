@@ -55,7 +55,6 @@ def _evaluation_summary(run: EvaluationRun) -> Dict[str, Any]:
         "has_diarization": details.get("has_diarization"),
     }
 
-
 @router.get("/gold_standards")
 def list_gold_standards(limit: int = Query(20, ge=1, le=100), session: Session = Depends(get_session)):
     golds = session.exec(select(GoldStandard).limit(limit)).all()

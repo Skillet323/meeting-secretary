@@ -1,13 +1,9 @@
-"""Task extraction with OpenRouter + robust parser + rule-based fallback.
+"""
+Task extraction with OpenRouter + robust parser + strict rule-based fallback.
 
 This module is designed for two workflows:
 1) runtime extraction in the backend
 2) batch generation of pseudo-gold AMI JSON files
-
-Public API:
-    async extract_tasks(transcript, return_debug=False, trace_id=None,
-                        meeting_ref=None, language='en', duration_sec=None)
-    def extract_tasks_rule_based(transcript)
 
 Returned task dicts are normalized to:
     {
@@ -20,6 +16,7 @@ Returned task dicts are normalized to:
         "model": str|None,             # only for LLM outputs
     }
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -27,7 +24,7 @@ import json
 import logging
 import random
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -39,10 +36,24 @@ _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_OPENROUTER_RETRIES = 3
 BASE_BACKOFF_SEC = 2.5
 
-
 # ---------------------------------------------------------------------------
 # Generic helpers
 # ---------------------------------------------------------------------------
+
+STOPWORDS = {
+    "the", "and", "for", "with", "that", "this", "from", "have", "has", "had", "are", "was", "were",
+    "will", "would", "could", "should", "need", "needs", "please", "about", "into", "onto", "then",
+    "than", "them", "they", "their", "there", "here", "what", "when", "where", "why", "how", "who",
+    "whom", "which", "your", "our", "you", "we", "uh", "um", "mm", "yeah", "okay", "ok", "right",
+    "just", "also", "still", "very", "really", "maybe"
+}
+
+
+def normalize_text(text: str) -> str:
+    text = (text or "").lower()
+    text = re.sub(r"[^\w\s]", " ", text, flags=re.UNICODE)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
 
 def _normalize_space(text: str) -> str:
@@ -55,13 +66,50 @@ def _preview(text: str, limit: int = 800) -> str:
 
 
 def _split_speaker_prefix(text: str) -> tuple[Optional[str], str]:
-    """Split 'SPEAKER_00: hello' or 'A: hello' into (speaker, text)."""
-    m = re.match(r"^\s*((?:SPEAKER_\d+)|(?:Speaker\s+\d+)|(?:[A-Z]))\s*:\s*(.+)$", text or "")
+    """
+    Split speaker-labeled lines such as:
+      - SPEAKER_00: hello
+      - Speaker 1: hello
+      - A: hello
+      - Laura: hello
+      - David Smith: hello
+    """
+    m = re.match(
+        r"^\s*((?:SPEAKER_\d+)|(?:Speaker\s+\d+)|(?:[A-Z])|(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}))\s*:\s*(.+)$",
+        text or "",
+    )
     if not m:
         return None, _normalize_space(text)
+
     speaker = _normalize_space(m.group(1))
     body = _normalize_space(m.group(2))
     return speaker, body
+
+
+def _tokenize(text: str) -> list[str]:
+    text = normalize_text(text)
+    return [t for t in text.split() if t and t not in STOPWORDS and len(t) > 2]
+
+
+def _task_supported_by_transcript(description: str, transcript: str, min_overlap: float = 0.15) -> bool:
+    """
+    Keep only tasks with some lexical support in the current transcript.
+    This is intentionally strict for short/noisy transcripts.
+    """
+    desc_tokens = set(_tokenize(description))
+    tr_tokens = set(_tokenize(transcript))
+
+    if len(desc_tokens) < 3 or not tr_tokens:
+        return False
+
+    overlap = len(desc_tokens & tr_tokens) / max(1, len(desc_tokens))
+    if overlap >= min_overlap:
+        return True
+
+    if len(desc_tokens & tr_tokens) >= 2:
+        return True
+
+    return False
 
 
 def _guess_deadline(sentence: str) -> Optional[str]:
@@ -91,12 +139,12 @@ def _guess_assignee(sentence: str) -> Optional[str]:
 
 def _looks_like_task(sentence: str) -> bool:
     """Conservative rule-based detection for fallback."""
-    s = sentence.lower()
+    s = normalize_text(sentence)
 
     deny = [
         "agenda",
         "project manager",
-        "we're developing",
+        "we re developing",
         "we are developing",
         "first meeting",
         "icebreaker",
@@ -112,6 +160,8 @@ def _looks_like_task(sentence: str) -> bool:
         "meeting agenda",
         "good morning",
         "hello everybody",
+        "i am",
+        "my name is",
     ]
     if any(d in s for d in deny):
         return False
@@ -126,7 +176,7 @@ def _looks_like_task(sentence: str) -> bool:
         "task",
         "to do",
         "follow up",
-        "let's",
+        "let s",
         "let us",
         "have to",
         "required to",
@@ -152,7 +202,7 @@ def _looks_like_task(sentence: str) -> bool:
 
 def _is_meta_task(text: str) -> bool:
     """Filter out obvious model meta-output or meeting narration."""
-    s = _normalize_space(text.lower())
+    s = normalize_text(text)
     bad_phrases = [
         "review and summarize action items",
         "extract action items from the meeting transcript",
@@ -169,20 +219,30 @@ def _is_meta_task(text: str) -> bool:
         "review current remote control features",
         "start the meeting",
         "confirm everyone is ready",
+        "read the entire transcript first",
+        "meeting id",
+        "language",
+        "duration",
     ]
     return any(p in s for p in bad_phrases)
 
 
 def _normalize_assignee_hint(hint: Any) -> Optional[str]:
+    """
+    Keep only plausible specific names/roles.
+    Drop generic instruction-like text.
+    """
     if hint is None:
         return None
+
     text = _normalize_space(str(hint))
     if not text:
         return None
 
-    # Drop obviously generic instructions.
+    lower = normalize_text(text)
+
     generic_markers = [
-        "assign",
+        "assign tasks",
         "ensure",
         "review",
         "summarize",
@@ -197,23 +257,46 @@ def _normalize_assignee_hint(hint: Any) -> Optional[str]:
         "facilitator",
         "design team",
         "marketing expert",
+        "product designer",
+        "assign specific tasks",
+        "should do",
+        "task owner",
     ]
-    if len(text.split()) > 6:
+
+    if len(text.split()) > 5:
         return None
-    if any(marker in text.lower() for marker in generic_markers) and not re.search(r"[A-ZА-ЯЁ][a-zа-яё]+", text):
-        return None
+
+    if any(marker in lower for marker in generic_markers):
+        # Keep if it is a short title-like role from the transcript,
+        # otherwise drop generic pseudo-assignees.
+        if not re.fullmatch(r"[A-Za-zА-ЯЁ][\w.-]+(?:\s+[A-Za-zА-ЯЁ][\w.-]+)?", text):
+            return None
+
     return text
 
 
-def _add_task(tasks: List[Dict[str, Any]], item: Dict[str, Any]) -> None:
+def _normalize_deadline_hint(hint: Any) -> Optional[str]:
+    if hint is None:
+        return None
+    text = _normalize_space(str(hint))
+    return text or None
+
+
+def _add_task(tasks: List[Dict[str, Any]], item: Dict[str, Any], transcript: str) -> None:
     desc = _normalize_space(str(item.get("description") or item.get("task") or ""))
     if not desc or _is_meta_task(desc):
         return
 
+    # For short/noisy transcripts, be stricter.
+    if not _task_supported_by_transcript(desc, transcript):
+        return
+
     speaker_hint = item.get("speaker_hint") or None
     speaker_hint = _normalize_space(str(speaker_hint)) if speaker_hint else None
+
     assignee_hint = _normalize_assignee_hint(item.get("assignee_hint") or item.get("assignee"))
-    deadline_hint = _normalize_space(str(item.get("deadline_hint") or item.get("deadline") or "")) or None
+    deadline_hint = _normalize_deadline_hint(item.get("deadline_hint") or item.get("deadline"))
+
     source_snippet = item.get("source_snippet") or item.get("evidence")
     source_snippet = _normalize_space(str(source_snippet)) if source_snippet else None
 
@@ -236,7 +319,6 @@ def _add_task(tasks: List[Dict[str, Any]], item: Dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 # Rule-based fallback
 # ---------------------------------------------------------------------------
-
 
 def _extract_tasks_simple(transcript: str) -> List[Dict[str, Any]]:
     tasks: List[Dict[str, Any]] = []
@@ -265,7 +347,9 @@ def _extract_tasks_simple(transcript: str) -> List[Dict[str, Any]]:
         }
         if speaker:
             item["speaker_hint"] = speaker
-        tasks.append(item)
+
+        if _task_supported_by_transcript(item["description"], transcript):
+            tasks.append(item)
 
     unique: List[Dict[str, Any]] = []
     seen: set[str] = set()
@@ -274,6 +358,7 @@ def _extract_tasks_simple(transcript: str) -> List[Dict[str, Any]]:
         if key and key not in seen:
             seen.add(key)
             unique.append(t)
+
     return unique
 
 
@@ -281,50 +366,49 @@ def _extract_tasks_simple(transcript: str) -> List[Dict[str, Any]]:
 # LLM output parsing
 # ---------------------------------------------------------------------------
 
-
-def _collect_json_tasks(node: Any, tasks: List[Dict[str, Any]]) -> None:
+def _collect_json_tasks(node: Any, tasks: List[Dict[str, Any]], transcript: str) -> None:
+    """
+    Recursively collect task-like objects from arbitrarily nested JSON.
+    """
     if isinstance(node, dict):
         desc = str(node.get("description") or node.get("task") or "").strip()
-        if desc:
-            if not _is_meta_task(desc):
-                item: Dict[str, Any] = {
-                    "description": desc[:500],
-                    "assignee_hint": node.get("assignee_hint") or node.get("assignee"),
-                    "deadline_hint": node.get("deadline_hint") or node.get("deadline"),
-                    "speaker_hint": node.get("speaker_hint") or node.get("speaker"),
-                    "source": node.get("source") or "openrouter",
-                }
-                if node.get("source_snippet"):
-                    item["source_snippet"] = str(node["source_snippet"])[:120]
-                tasks.append(item)
-            return
+        if desc and not _is_meta_task(desc) and _task_supported_by_transcript(desc, transcript):
+            item: Dict[str, Any] = {
+                "description": desc[:500],
+                "assignee_hint": _normalize_assignee_hint(node.get("assignee_hint") or node.get("assignee")),
+                "deadline_hint": _normalize_deadline_hint(node.get("deadline_hint") or node.get("deadline")),
+                "source": "openrouter",
+            }
+            if node.get("source_snippet"):
+                item["source_snippet"] = str(node["source_snippet"])[:120]
+            tasks.append(item)
 
-        for value in node.values():
-            if isinstance(value, (dict, list)):
-                _collect_json_tasks(value, tasks)
+        # Recurse only into non-scalar content and ignore task metadata fields.
+        for key, value in node.items():
+            if key in {"description", "task", "assignee_hint", "assignee", "deadline_hint", "deadline", "source_snippet", "evidence"}:
+                continue
+            _collect_json_tasks(value, tasks, transcript)
 
     elif isinstance(node, list):
         for item in node:
-            _collect_json_tasks(item, tasks)
+            _collect_json_tasks(item, tasks, transcript)
 
     elif isinstance(node, str):
-        speaker, text = _split_speaker_prefix(node)
-        text = _normalize_space(text)
+        text = _normalize_space(node)
         if len(text) < 10 or _is_meta_task(text):
             return
-        tasks.append(
-            {
-                "description": text[:500],
-                "assignee_hint": _guess_assignee(text),
-                "deadline_hint": _guess_deadline(text),
-                "speaker_hint": speaker,
-                "source": "openrouter_text",
-                "source_snippet": text[:120],
-            }
-        )
+        if _task_supported_by_transcript(text, transcript):
+            tasks.append(
+                {
+                    "description": text[:500],
+                    "assignee_hint": _guess_assignee(text),
+                    "deadline_hint": _guess_deadline(text),
+                    "source": "openrouter_text",
+                }
+            )
 
 
-def _parse_llm_output(raw: str) -> tuple[List[Dict[str, Any]], dict[str, Any]]:
+def _parse_llm_output(raw: str, transcript: str, *, trace_id: str | None = None) -> tuple[List[Dict[str, Any]], dict[str, Any]]:
     debug: dict[str, Any] = {
         "raw": raw,
         "raw_preview": _preview(raw, 1200),
@@ -350,7 +434,8 @@ def _parse_llm_output(raw: str) -> tuple[List[Dict[str, Any]], dict[str, Any]]:
             continue
 
         tasks: List[Dict[str, Any]] = []
-        _collect_json_tasks(parsed, tasks)
+        _collect_json_tasks(parsed, tasks, transcript)
+
         if tasks:
             unique: List[Dict[str, Any]] = []
             seen: set[str] = set()
@@ -365,15 +450,13 @@ def _parse_llm_output(raw: str) -> tuple[List[Dict[str, Any]], dict[str, Any]]:
             debug["parsed_tasks"] = len(unique)
             return unique, debug
 
-    # Line fallback for malformed JSON-like output.
-    tasks = []
+    tasks: List[Dict[str, Any]] = []
     for line in raw.splitlines():
-        speaker, text = _split_speaker_prefix(line)
-        text = _normalize_space(text)
-        if not text:
+        line = _normalize_space(line)
+        if not line:
             continue
 
-        low = text.lower()
+        low = normalize_text(line)
         if low in {"action items", "task", "tasks", "extracted action items"}:
             continue
         if low.startswith("[") and low.endswith("]"):
@@ -381,30 +464,19 @@ def _parse_llm_output(raw: str) -> tuple[List[Dict[str, Any]], dict[str, Any]]:
         if low.startswith("extracted action items"):
             continue
 
-        if len(text) > 15 and _looks_like_task(text):
+        if len(line) > 15 and _looks_like_task(line) and _task_supported_by_transcript(line, transcript):
             tasks.append(
                 {
-                    "description": text[:500],
-                    "assignee_hint": _guess_assignee(text),
-                    "deadline_hint": _guess_deadline(text),
-                    "speaker_hint": speaker,
+                    "description": line[:500],
+                    "assignee_hint": _guess_assignee(line),
+                    "deadline_hint": _guess_deadline(line),
                     "source": "openrouter_text",
-                    "source_snippet": text[:120],
                 }
             )
 
-    # Deduplicate.
-    unique: List[Dict[str, Any]] = []
-    seen: set[str] = set()
-    for t in tasks:
-        key = _normalize_space(t["description"].lower())[:120]
-        if key and key not in seen:
-            seen.add(key)
-            unique.append(t)
-
     debug["parse_stage"] = "line_fallback"
-    debug["parsed_tasks"] = len(unique)
-    return unique, debug
+    debug["parsed_tasks"] = len(tasks)
+    return tasks, debug
 
 
 # ---------------------------------------------------------------------------
@@ -412,62 +484,38 @@ def _parse_llm_output(raw: str) -> tuple[List[Dict[str, Any]], dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 _SYSTEM_PROMPT = (
-    "You are a precise action-item extractor for meeting transcripts. "
-    "Your ONLY output must be a valid JSON array — no prose, no markdown, no commentary. "
-    "If no valid tasks are found, return [].\n\n"
-    "### DEFINITION OF A VALID ACTION ITEM ###\n"
-    "A valid task MUST meet ALL criteria:\n"
-    "1. FUTURE-ORIENTED: The action must happen AFTER the meeting ends. "
-    "Ignore introductions, discussions, decisions already made, or retrospective comments.\n"
-    "2. CONCRETE & ACTIONABLE: Must contain a specific verb (e.g., 'draft', 'review', 'send', 'build'). "
-    "Vague items like 'discuss further' or 'think about' are invalid unless tied to a deliverable.\n"
-    "3. ASSIGNABLE: Must be possible to assign to a specific person or role mentioned in the transcript.\n\n"
-    "### EXTRACTION RULES ###\n"
-    "- assignee_hint: Extract the EXACT name or role spoken (e.g., 'David', 'marketing expert'). "
-    "If no assignee is mentioned or strongly implied, use null.\n"
-    "- speaker_hint: If the transcript line contains a speaker label, copy it exactly (e.g. 'SPEAKER_00', 'A'). "
-    "Otherwise use null.\n"
-    "- deadline_hint: Extract ONLY if explicitly stated ('by Friday', 'before next meeting') "
-    "or strongly implied by context. Never invent deadlines. If unclear, use null.\n"
-    "- description: Be specific. Include key constraints mentioned (e.g., 'design remote control casing, max cost €12.50').\n"
-    "- source_snippet: Optional short quote (≤15 words) from the transcript that justifies this task.\n\n"
-    "### NEGATIVE EXAMPLES (DO NOT EXTRACT) ###\n"
-    "'Introduce participants' → already happened during meeting\n"
-    "'Discuss project finance' → discussion topic, not an action\n"
-    "'Review project announcement' → past event (they already received it)\n"
-    "'Confirm attendance' → administrative note, not a task\n\n"
-    "### POSITIVE EXAMPLES (EXTRACT THESE) ###\n"
-    "'David to draft industrial design concepts for remote casing by next session'\n"
-    "'Craig to define UI technical functions before 30-min break'\n"
-    "'Andrew to research target market positioning for €25 price point'\n\n"
-    "### OUTPUT FORMAT ###\n"
-    "Each element must be a JSON object with EXACTLY these keys:\n"
-    "{\n"
-    '  "description": "string",\n'
-    '  "assignee_hint": "string or null",\n'
-    '  "deadline_hint": "string or null",\n'
-    '  "speaker_hint": "string or null",\n'
-    '  "source_snippet": "string or null"\n'
-    "}\n\n"
-    "Ground every task in the transcript text. When in doubt, exclude."
+    "You are a strict action-item extractor for meeting transcripts.\n"
+    "Return ONLY a valid JSON array. No prose. No markdown. No explanation.\n"
+    "If no valid tasks exist, return [].\n\n"
+    "Rules:\n"
+    "- Extract only tasks that are clearly intended to happen AFTER the meeting.\n"
+    "- Do NOT extract introductions, agenda items, discussion topics, or summaries.\n"
+    "- Do NOT invent people, names, roles, deadlines, or tasks.\n"
+    "- If the transcript is short, noisy, or mostly off-topic, prefer returning [].\n"
+    "- Keep descriptions concrete and short.\n"
+    "- Use assignee_hint only if the person/role is actually mentioned or strongly implied in the transcript.\n"
+    "- Use deadline_hint only if explicitly stated or very clearly implied.\n"
+    "- speaker_hint should be copied only from actual speaker labels found in the transcript (e.g. SPEAKER_00, A). Do not turn them into human names.\n\n"
+    "Output schema for each item:\n"
+    "{"
+    '"description": "string", '
+    '"assignee_hint": "string or null", '
+    '"deadline_hint": "string or null", '
+    '"speaker_hint": "string or null", '
+    '"source_snippet": "string or null"'
+    "}"
 )
 
 _USER_TEMPLATE = (
     "Extract action items from the meeting transcript below.\n\n"
-    "### MEETING METADATA ###\n"
     "Meeting ID: {meeting_ref}\n"
     "Language: {language}\n"
-    "Duration: {duration_sec:.1f} seconds\n\n"
-    "### TRANSCRIPT ###\n"
+    "Duration: {duration_sec:.1f} seconds\n"
+    "Transcript confidence: {transcript_confidence}\n\n"
+    "Transcript:\n"
     "{transcript}\n\n"
-    "### INSTRUCTIONS ###\n"
-    "1. Read the ENTIRE transcript first.\n"
-    "2. Identify ONLY tasks that participants agreed to complete AFTER this meeting.\n"
-    "3. For each task, extract: description, assignee_hint, deadline_hint, speaker_hint, source_snippet.\n"
-    "4. Return ONLY a valid JSON array. No other text.\n\n"
-    "Remember: If the action already happened DURING the meeting, DO NOT extract it."
+    "Return only a JSON array."
 )
-
 
 async def _call_openrouter(
     transcript: str,
@@ -476,6 +524,7 @@ async def _call_openrouter(
     meeting_ref: str | None = None,
     language: str = "en",
     duration_sec: float | None = None,
+    transcript_confidence: float | None = None,
 ) -> tuple[List[Dict[str, Any]], dict[str, Any]]:
     api_key: str = getattr(settings, "OPENROUTER_API_KEY", "") or ""
     if not api_key:
@@ -487,6 +536,7 @@ async def _call_openrouter(
         meeting_ref=meeting_ref or "unknown",
         language=language or "en",
         duration_sec=duration_sec or 0.0,
+        transcript_confidence=f"{transcript_confidence:.3f}" if transcript_confidence is not None else "unknown",
         transcript=transcript[:8000],
     )
 
@@ -521,7 +571,15 @@ async def _call_openrouter(
                         trace_id or "-",
                         f", Retry-After={retry_after}" if retry_after else "",
                     )
-                    raise RuntimeError("OPENROUTER_RATE_LIMITED")
+                    return [], {
+                        "provider": "openrouter",
+                        "model": model,
+                        "raw_preview": None,
+                        "parse_stage": None,
+                        "parsed_tasks": 0,
+                        "fallback_used": True,
+                        "error": "rate_limited",
+                    }
 
                 if resp.status_code in (408, 502, 503, 529):
                     wait_sec = BASE_BACKOFF_SEC * (2**attempt) + random.uniform(0, 0.75)
@@ -545,7 +603,7 @@ async def _call_openrouter(
                 logger.info("[TASK][%s] OpenRouter model used: %s", trace_id or "-", actual_model)
                 logger.info("[TASK][%s] OpenRouter raw output:\n%s", trace_id or "-", raw)
 
-                tasks, parse_debug = _parse_llm_output(raw)
+                tasks, parse_debug = _parse_llm_output(raw, transcript, trace_id=trace_id)
                 for t in tasks:
                     t["model"] = actual_model
 
@@ -559,19 +617,6 @@ async def _call_openrouter(
                 }
                 return tasks, debug
 
-            except RuntimeError as exc:
-                if str(exc) == "OPENROUTER_RATE_LIMITED":
-                    return [], {
-                        "provider": "openrouter",
-                        "model": model,
-                        "raw_preview": None,
-                        "parse_stage": None,
-                        "parsed_tasks": 0,
-                        "fallback_used": True,
-                        "error": "rate_limited",
-                    }
-                last_error = exc
-                break
             except Exception as exc:
                 last_error = exc
                 if attempt < MAX_OPENROUTER_RETRIES - 1:
@@ -595,7 +640,6 @@ async def _call_openrouter(
 # Public API
 # ---------------------------------------------------------------------------
 
-
 async def extract_tasks(
     transcript: str,
     *,
@@ -604,12 +648,9 @@ async def extract_tasks(
     meeting_ref: str | None = None,
     language: str = "en",
     duration_sec: float | None = None,
+    transcript_confidence: float | None = None,
 ) -> List[Dict[str, Any]] | tuple[List[Dict[str, Any]], dict[str, Any]]:
     transcript = _normalize_space(transcript)
-    if not transcript:
-        empty_debug = {"provider": "none", "reason": "empty transcript"}
-        return ([], empty_debug) if return_debug else []
-
     provider: str = getattr(settings, "TASK_PROVIDER", "openrouter") or "openrouter"
     fallback_tasks = _extract_tasks_simple(transcript)
 
@@ -621,7 +662,29 @@ async def extract_tasks(
         "raw_preview": None,
         "parse_stage": None,
         "fallback_used": provider == "rules",
+        "conservative_mode": False,
     }
+
+    if not transcript:
+        debug["reason"] = "empty transcript"
+        return ([], debug) if return_debug else []
+
+    words_count = len(transcript.split())
+    short_or_noisy = (
+        (duration_sec is not None and duration_sec < 180)
+        or words_count < 40
+        or (transcript_confidence is not None and transcript_confidence < 0.60)
+    )
+
+    # For short/noisy transcripts, better a conservative baseline than hallucinated tasks.
+    if short_or_noisy and provider != "rules":
+        logger.info(
+            "[TASK][%s] Conservative mode enabled: short/noisy transcript, using rule-based fallback only",
+            trace_id or "-",
+        )
+        debug["conservative_mode"] = True
+        debug["fallback_used"] = True
+        return (fallback_tasks, debug) if return_debug else fallback_tasks
 
     if provider == "rules":
         logger.info("[TASK][%s] Using rule-based extraction", trace_id or "-")
@@ -634,6 +697,7 @@ async def extract_tasks(
             meeting_ref=meeting_ref,
             language=language,
             duration_sec=duration_sec,
+            transcript_confidence=transcript_confidence,
         )
         debug.update(llm_debug)
     except Exception as exc:
@@ -650,8 +714,9 @@ async def extract_tasks(
 
     debug["llm_tasks"] = len(llm_tasks)
 
-    # If the LLM returns a thin list, merge with fallback so we still have coverage.
+    # If the LLM result is thin, merge with fallback to preserve some coverage.
     combined = llm_tasks if len(llm_tasks) >= 2 else llm_tasks + fallback_tasks
+    debug["fallback_merged"] = len(llm_tasks) < 2 and len(fallback_tasks) > 0
 
     unique: List[Dict[str, Any]] = []
     seen: set[str] = set()
@@ -663,8 +728,6 @@ async def extract_tasks(
 
     result = unique[:20]
     debug["final_tasks"] = len(result)
-    debug["fallback_merged"] = len(llm_tasks) < 2 and len(fallback_tasks) > 0
-    debug.setdefault("fallback_used", False)
 
     return (result, debug) if return_debug else result
 

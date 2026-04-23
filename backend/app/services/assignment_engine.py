@@ -61,21 +61,20 @@ def _match_name(participants: List[Participant], name_hint: Optional[str]) -> Op
     if not hint:
         return None
 
-    # Direct / substring match first.
     for p in participants:
         blob = _participant_blob(p)
         if hint in blob:
             return p
 
-    # Fuzzy name match.
+    # If hint is a single token, allow fuzzy match only on names.
     names = [p.name for p in participants if p.name]
-    close = get_close_matches(name_hint, names, n=1, cutoff=0.55)
+    close = get_close_matches(name_hint, names, n=1, cutoff=0.72)
     if close:
         for p in participants:
             if p.name == close[0]:
                 return p
-    return None
 
+    return None
 
 def _match_role(participants: List[Participant], role_hint: Optional[str]) -> Optional[Participant]:
     if not role_hint:
@@ -99,6 +98,12 @@ def _speaker_alias_map(meeting_info: Optional[dict]) -> dict[str, str]:
         return {str(k): str(v) for k, v in aliases.items() if v}
     return {}
 
+def _looks_like_real_name(text: str) -> bool:
+    s = _norm(text)
+    if not s:
+        return False
+    # one or two capitalized tokens
+    return bool(re.fullmatch(r"[a-zа-яё][a-zа-яё'\-]+(?:\s+[a-zа-яё][a-zа-яё'\-]+)?", s, flags=re.IGNORECASE))
 
 def _resolve_speaker_hint(task: dict, meeting_info: Optional[dict], participants: List[Participant]) -> Optional[str]:
     speaker_hint = task.get("speaker_hint") or task.get("speaker") or task.get("speaker_label")
@@ -201,113 +206,45 @@ def _rule_assignee(desc: str, rules: List[Rule], participants: List[Participant]
     return (None, None)
 
 
-def assign_tasks_to_participants(
-    tasks: List[dict],
-    session: Session,
-    meeting_info: Optional[dict] = None,
-) -> List[dict]:
-    """Assign tasks to participants using name/role/speaker mapping."""
-    participants = load_participants(session)
-    rules = load_rules(session)
-    rr_index = 0
-    aliases = _speaker_alias_map(meeting_info)
+def assign_task_to_participant(task: dict, meeting_info: Optional[dict], participants: List[Participant], round_robin_idx: int) -> tuple[Optional[str], str, float]:
+    # 1) speaker alias -> participant
+    speaker_resolved = _resolve_speaker_hint(task, meeting_info, participants)
+    if speaker_resolved:
+        p = _match_name(participants, speaker_resolved)
+        if p:
+            return p.name, "speaker_alias", 0.95
 
-    for t in tasks:
-        desc = str(t.get("description") or "")
-        hint = t.get("assignee_hint") or t.get("assignee")
-        speaker_hint = _resolve_speaker_hint(t, meeting_info, participants)
-        speaker_resolved = None
-        assigned = None
-        source = None
-        confidence = 0.0
+    # 2) explicit assignee_hint
+    assignee_hint = task.get("assignee_hint")
+    p = _match_name(participants, assignee_hint)
+    if p:
+        return p.name, "assignee_hint", 0.90
 
-        # 1) Speaker hint -> alias -> participant.
-        if speaker_hint:
-            speaker_resolved = aliases.get(str(t.get("speaker_hint") or t.get("speaker") or t.get("speaker_label") or "").strip())
-            if speaker_resolved:
-                p = _match_name(participants, speaker_resolved)
-                if p:
-                    assigned = p.email or p.name
-                    source = "speaker_alias"
-                    confidence = 0.95
-                elif not participants:
-                    assigned = speaker_resolved
-                    source = "speaker_alias_text"
-                    confidence = 0.65
-            if not assigned:
-                p = _match_name(participants, speaker_hint)
-                if p:
-                    assigned = p.email or p.name
-                    source = "speaker_name"
-                    confidence = 0.9
-                elif not participants:
-                    assigned = speaker_hint
-                    source = "speaker_text"
-                    confidence = 0.5
+    # 3) role hint from task text
+    role_hint = _infer_role_hint(task.get("description", ""))
+    p = _match_role(participants, role_hint)
+    if p:
+        return p.name, "role_hint", 0.70
 
-        # 2) Explicit assignee hint from model.
-        if not assigned and hint:
-            p = _match_name(participants, hint)
-            if p:
-                assigned = p.email or p.name
-                source = "assignee_hint:name"
-                confidence = 0.85
-            else:
-                p = _match_role(participants, hint)
-                if p:
-                    assigned = p.email or p.name
-                    source = "assignee_hint:role"
-                    confidence = 0.8
-                elif not participants:
-                    assigned = str(hint)
-                    source = "assignee_hint:text"
-                    confidence = 0.45
+    # 4) concrete name in task / snippet
+    candidate = _extract_candidate_name(
+        " ".join(filter(None, [task.get("description", ""), task.get("source_snippet", "")]))
+    )
+    if candidate:
+        p = _match_name(participants, candidate)
+        if p:
+            return p.name, "name_in_text", 0.80
 
-        # 3) Look for names in task description.
-        if not assigned:
-            name = _extract_candidate_name(desc)
-            if name:
-                p = _match_name(participants, name)
-                if p:
-                    assigned = p.email or p.name
-                    source = "description:name"
-                    confidence = 0.75
+    # 5) explicit role words in text
+    role_text = _infer_role_hint(" ".join(filter(None, [task.get("description", ""), task.get("assignee_hint", "")])))
+    p = _match_role(participants, role_text)
+    if p:
+        return p.name, "role_text", 0.65
 
-        # 4) Infer a role from the description.
-        if not assigned:
-            role_hint = _infer_role_hint(desc) or _infer_role_hint(str(hint or ""))
-            if role_hint:
-                p = _match_role(participants, role_hint)
-                if p:
-                    assigned = p.email or p.name
-                    source = "inferred_role"
-                    confidence = 0.7
-                elif not participants:
-                    assigned = role_hint
-                    source = "inferred_role_text"
-                    confidence = 0.35
+    # 6) round-robin only as a very last resort and only for plausible tasks
+    desc_norm = _norm(task.get("description", ""))
+    if participants and len(desc_norm.split()) >= 4:
+        p = participants[round_robin_idx % len(participants)]
+        return p.name, "round_robin", 0.15
 
-        # 5) Regex / role rules.
-        if not assigned:
-            rule_assignee, rule_source = _rule_assignee(desc, rules, participants)
-            if rule_assignee:
-                assigned = rule_assignee
-                source = rule_source
-                confidence = 0.6
-
-        # 6) Round robin fallback if participants exist.
-        if not assigned and participants:
-            p = participants[rr_index % len(participants)]
-            assigned = p.email or p.name
-            rr_index += 1
-            source = "round_robin"
-            confidence = 0.25
-
-        # Keep tasks unassigned if there is nobody to assign to.
-        t["assignee"] = assigned
-        t["assignee_source"] = source
-        t["assignment_confidence"] = round(confidence, 3) if confidence else None
-        if speaker_resolved:
-            t["speaker_resolved"] = speaker_resolved
-
-    return tasks
+    return None, "unassigned", 0.0

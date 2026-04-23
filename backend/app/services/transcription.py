@@ -244,6 +244,24 @@ def transcribe_from_bytes(audio_source: Union[bytes, str], filename: Optional[st
             output["language"],
             output["confidence"],
         )
+                # Infer speaker aliases only from explicit self-introductions.
+        speaker_aliases = _infer_speaker_aliases(merged_segments)
+        speaker_transcript = _segments_to_speaker_transcript(merged_segments)
+
+        confidence_values = [
+            c for c in (_segment_confidence(seg) for seg in merged_segments) if c is not None
+        ]
+        confidence = float(sum(confidence_values) / len(confidence_values)) if confidence_values else None
+
+        return {
+            "text": final_text.strip(),
+            "language": result.get("language") or "en",
+            "segments": merged_segments,
+            "speaker_transcript": speaker_transcript,
+            "speaker_aliases": speaker_aliases,
+            "confidence": confidence,
+            "has_diarization": bool(diarization_segments),
+        }
         return output
 
     finally:
