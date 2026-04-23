@@ -8,7 +8,7 @@ backend/.env
 backend/meeting_secretary.db
 backend/*.log
 backend/model_cache/
-
+.env
 # Node
 frontend/node_modules/
 frontend/dist/
@@ -65,3 +65,8 @@ BOOTSTRAP.md
 # Misc
 *.bak
 *.tmp
+
+*.wav
+*.mp3
+*.m4a
+*.ogg

@@ -1,17 +1,20 @@
-"""
-Transcription service with:
-- Audio preprocessing
-- Whisper ASR with diarization support
-- Confidence scoring
-- Segment-level timestamps
+"""Transcription service with audio preprocessing, Whisper ASR and diarization.
+
+Enhancements over the baseline:
+- normalized per-segment confidence
+- diarization labels kept in segments
+- a speaker-labeled transcript is generated for downstream task extraction
+- lightweight speaker alias inference from self-introductions
 """
 from __future__ import annotations
 
 import logging
 import math
 import os
+import re
 import tempfile
-from typing import Any, Dict, List, Optional
+from collections import defaultdict
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 import whisper
@@ -50,25 +53,28 @@ def get_model():
 
 
 def _segment_confidence(seg: Dict[str, Any]) -> Optional[float]:
-    """
-    Whisper usually exposes avg_logprob, not token-level probabilities.
-    Convert avg_logprob to a [0..1] heuristic confidence.
-    """
+    """Convert Whisper's avg_logprob to a soft [0..1] score."""
     for key in ("confidence", "avg_logprob"):
         value = seg.get(key)
         if isinstance(value, (int, float)):
             if key == "confidence":
                 return float(max(0.0, min(1.0, value)))
-            # avg_logprob is usually negative; exp() gives a soft score
             return float(max(0.0, min(1.0, math.exp(value))))
     return None
 
 
+def _normalize_speaker_label(label: Any) -> str:
+    text = str(label or "Unknown").strip()
+    m = re.search(r"(\d+)", text)
+    if text.upper().startswith("SPEAKER") and m:
+        return f"SPEAKER_{int(m.group(1)):02d}"
+    if text.lower().startswith("speaker") and m:
+        return f"SPEAKER_{int(m.group(1)):02d}"
+    return text
+
+
 def merge_speakers(transcript_segments: List[Dict], speaker_segments: List[Dict]) -> List[Dict]:
-    """
-    Merge Whisper transcript segments with diarization output.
-    Simple overlap-based assignment.
-    """
+    """Merge Whisper segments with diarization output using overlap matching."""
     if not speaker_segments:
         return transcript_segments
 
@@ -98,34 +104,75 @@ def merge_speakers(transcript_segments: List[Dict], speaker_segments: List[Dict]
                     best_speaker = sp.get("speaker")
 
         ts_copy = ts.copy()
-        speaker_label = best_speaker if best_speaker is not None else "Unknown"
-        if isinstance(speaker_label, (int, float)):
-            ts_copy["speaker"] = f"Speaker {int(speaker_label)}"
-        else:
-            ts_copy["speaker"] = str(speaker_label)
+        ts_copy["speaker"] = _normalize_speaker_label(best_speaker if best_speaker is not None else "Unknown")
         merged.append(ts_copy)
 
     return merged
 
 
-def transcribe_from_bytes(audio_bytes: bytes, filename: Optional[str] = None) -> Dict[str, Any]:
+def _segments_to_speaker_transcript(segments: List[Dict[str, Any]]) -> str:
+    lines: List[str] = []
+    last_speaker: Optional[str] = None
+    last_line: Optional[str] = None
+
+    for seg in segments:
+        speaker = _normalize_speaker_label(seg.get("speaker") or "Unknown")
+        text = str(seg.get("text") or "").strip()
+        if not text:
+            continue
+
+        line = f"{speaker}: {text}"
+        if speaker == last_speaker and lines:
+            lines[-1] = f"{last_line} {text}" if last_line else line
+            last_line = lines[-1]
+        else:
+            lines.append(line)
+            last_speaker = speaker
+            last_line = line
+    return "\n".join(lines).strip()
+
+
+def _infer_speaker_aliases(segments: List[Dict[str, Any]]) -> dict[str, str]:
+    """Infer names from self-introductions in early diarized turns."""
+    aliases: dict[str, str] = {}
+    patterns = [
+        r"(?:i'm|i am|my name is|this is)\s+([A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+)?)",
+        r"(?:i am)\s+([A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+)?)",
+    ]
+
+    for seg in segments[:40]:  # introductions typically happen early
+        speaker = _normalize_speaker_label(seg.get("speaker") or "Unknown")
+        text = str(seg.get("text") or "")
+        if speaker in aliases:
+            continue
+        for pat in patterns:
+            m = re.search(pat, text, flags=re.IGNORECASE)
+            if m:
+                candidate = m.group(1).strip()
+                if len(candidate.split()) <= 3:
+                    aliases[speaker] = candidate
+                    break
+
+    return aliases
+
+
+def transcribe_from_bytes(audio_source: Union[bytes, str], filename: Optional[str] = None) -> Dict[str, Any]:
     """
     Transcribe audio with preprocessing and optional diarization.
-    Returns:
-    - text
-    - segments
-    - language
-    - confidence
-    - has_diarization
+    Returns text, segments, speaker_transcript, aliases, language, confidence and diarization flag.
     """
     temp_wav = None
     try:
         try:
-            temp_wav = preprocess_audio(audio_bytes, filename)
+            temp_wav = preprocess_audio(audio_source, filename)
         except Exception as e:
             logger.warning("Preprocessing failed: %s; saving raw audio to temp file", e)
             tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-            tmp.write(audio_bytes)
+            if isinstance(audio_source, bytes):
+                tmp.write(audio_source)
+            else:
+                with open(audio_source, "rb") as src:
+                    tmp.write(src.read())
             tmp.close()
             temp_wav = tmp.name
 
@@ -138,10 +185,8 @@ def transcribe_from_bytes(audio_bytes: bytes, filename: Optional[str] = None) ->
             "word_timestamps": True,
             "temperature": 0.0,
             "verbose": False,
+            "fp16": use_fp16,
         }
-        # Newer whisper versions accept fp16; older ones ignore it.
-        transcribe_kwargs["fp16"] = use_fp16
-
         result = model.transcribe(**transcribe_kwargs)
 
         segments: List[Dict[str, Any]] = []
@@ -167,6 +212,8 @@ def transcribe_from_bytes(audio_bytes: bytes, filename: Optional[str] = None) ->
             "segments": segments,
             "confidence": total_confidence / count if count > 0 else None,
             "has_diarization": False,
+            "speaker_transcript": None,
+            "speaker_aliases": {},
         }
 
         # IMPORTANT: diarization must happen before temp file cleanup
@@ -177,11 +224,19 @@ def transcribe_from_bytes(audio_bytes: bytes, filename: Optional[str] = None) ->
                 if speaker_segments:
                     output["segments"] = merge_speakers(output["segments"], speaker_segments)
                     output["has_diarization"] = True
+                    output["speaker_transcript"] = _segments_to_speaker_transcript(output["segments"])
+                    output["speaker_aliases"] = _infer_speaker_aliases(output["segments"])
                     logger.info("[TRANSCRIPTION] Diarization complete: %d speaker segments", len(speaker_segments))
                 else:
                     logger.warning("[TRANSCRIPTION] Diarization returned no segments")
             except Exception as e:
                 logger.error("[TRANSCRIPTION] Diarization failed: %s", e, exc_info=True)
+
+        if not output["speaker_transcript"]:
+            if output["has_diarization"]:
+                output["speaker_transcript"] = _segments_to_speaker_transcript(output["segments"]) or output["text"]
+            else:
+                output["speaker_transcript"] = output["text"]
 
         logger.info(
             "[TRANSCRIPTION] Completed: %d segments, language=%s, confidence=%s",
@@ -189,6 +244,24 @@ def transcribe_from_bytes(audio_bytes: bytes, filename: Optional[str] = None) ->
             output["language"],
             output["confidence"],
         )
+                # Infer speaker aliases only from explicit self-introductions.
+        speaker_aliases = _infer_speaker_aliases(merged_segments)
+        speaker_transcript = _segments_to_speaker_transcript(merged_segments)
+
+        confidence_values = [
+            c for c in (_segment_confidence(seg) for seg in merged_segments) if c is not None
+        ]
+        confidence = float(sum(confidence_values) / len(confidence_values)) if confidence_values else None
+
+        return {
+            "text": final_text.strip(),
+            "language": result.get("language") or "en",
+            "segments": merged_segments,
+            "speaker_transcript": speaker_transcript,
+            "speaker_aliases": speaker_aliases,
+            "confidence": confidence,
+            "has_diarization": bool(diarization_segments),
+        }
         return output
 
     finally:
