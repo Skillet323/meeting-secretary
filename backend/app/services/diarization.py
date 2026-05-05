@@ -18,7 +18,6 @@ from transcript self-introductions like:
     "My name is David"
     "This is Craig"
 """
-
 from __future__ import annotations
 
 import logging
@@ -30,17 +29,12 @@ from ..config import settings
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# pyannote — primary pipeline
-# ---------------------------------------------------------------------------
-
 _pyannote_pipeline = None
 _pyannote_available: Optional[bool] = None
 _pyannote_model_id: Optional[str] = None
 
 
 def _load_pyannote():
-    """Lazy-load pyannote pipeline once per process."""
     global _pyannote_pipeline, _pyannote_available, _pyannote_model_id
 
     if _pyannote_available is False:
@@ -51,8 +45,7 @@ def _load_pyannote():
     token: str = settings.HF_TOKEN or os.environ.get("HF_TOKEN", "")
     if not token:
         logger.warning(
-            "[DIARIZATION] HF_TOKEN not set — pyannote requires a HuggingFace token. "
-            "Falling back to resemblyzer."
+            "[DIARIZATION] HF_TOKEN not set — pyannote requires a HuggingFace token. Falling back to resemblyzer."
         )
         _pyannote_available = False
         return None
@@ -75,7 +68,6 @@ def _load_pyannote():
                 try:
                     pipeline = Pipeline.from_pretrained(model_id, token=token)
                 except TypeError:
-                    # Compatibility with older pyannote versions
                     pipeline = Pipeline.from_pretrained(model_id, use_auth_token=token)
                 _pyannote_model_id = model_id
                 break
@@ -115,7 +107,6 @@ def _merge_adjacent_segments(segments: List[Dict[str, Any]], max_gap: float = 0.
 
 
 def _diarize_pyannote(wav_path: str, n_speakers: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
-    """Run pyannote diarization and return list of {start, end, speaker} dicts."""
     pipeline = _load_pyannote()
     if pipeline is None:
         return None
@@ -146,15 +137,7 @@ def _diarize_pyannote(wav_path: str, n_speakers: Optional[int] = None) -> Option
         return None
 
 
-# ---------------------------------------------------------------------------
-# resemblyzer — fallback pipeline
-# ---------------------------------------------------------------------------
-
 def _diarize_resemblyzer(wav_path: str, n_speakers: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
-    """
-    Fallback diarizer using resemblyzer + SpectralClustering.
-    Lower accuracy, but zero HF token dependency.
-    """
     try:
         from resemblyzer import VoiceEncoder, preprocess_wav  # type: ignore
         import numpy as np  # type: ignore
@@ -164,7 +147,7 @@ def _diarize_resemblyzer(wav_path: str, n_speakers: Optional[int] = None) -> Opt
         return None
 
     try:
-        wav = preprocess_wav(wav_path)  # float32 numpy, 16 kHz
+        wav = preprocess_wav(wav_path)
         encoder = VoiceEncoder()
         sr = 16_000
         win = int(1.5 * sr)
@@ -181,8 +164,14 @@ def _diarize_resemblyzer(wav_path: str, n_speakers: Optional[int] = None) -> Opt
             return None
 
         X = np.vstack(embeds)
+        duration_sec = len(wav) / sr
 
-        # Extremely short files: keep a single speaker rather than hallucinating multiple ones.
+        # Very short files: avoid hallucinating multiple speakers.
+        if n_speakers is None and (duration_sec < 120 or len(X) <= 4):
+            segment = {"start": 0.0, "end": float(duration_sec), "speaker": "SPEAKER_00"}
+            logger.info("[DIARIZATION] resemblyzer → 1 segment (single-speaker guard)")
+            return [segment]
+
         if len(X) == 1:
             segment = {"start": float(timestamps[0][0]), "end": float(timestamps[0][1]), "speaker": "SPEAKER_00"}
             logger.info("[DIARIZATION] resemblyzer → 1 segment (1 speaker)")
@@ -191,7 +180,6 @@ def _diarize_resemblyzer(wav_path: str, n_speakers: Optional[int] = None) -> Opt
         if n_speakers and n_speakers > 0:
             k = min(n_speakers, len(X))
         else:
-            # conservative heuristic
             k = min(5, max(1, int(len(X) ** 0.5)))
             k = min(k, len(X))
 
@@ -222,10 +210,6 @@ def _diarize_resemblyzer(wav_path: str, n_speakers: Optional[int] = None) -> Opt
         return None
 
 
-# ---------------------------------------------------------------------------
-# Speaker alias helpers
-# ---------------------------------------------------------------------------
-
 _NAME_PATTERNS = [
     r"\b(?:i'm|i am|my name is|this is|name's)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
     r"\b(?:i am)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
@@ -233,13 +217,6 @@ _NAME_PATTERNS = [
 
 
 def extract_explicit_names_from_transcript(transcript: str) -> list[str]:
-    """
-    Extract explicit self-introduced names from a transcript.
-    Example lines:
-      "I'm Laura"
-      "My name is David"
-      "This is Craig"
-    """
     names: list[str] = []
     if not transcript:
         return names
@@ -253,13 +230,6 @@ def extract_explicit_names_from_transcript(transcript: str) -> list[str]:
 
 
 def infer_speaker_alias_map_from_transcript(transcript: str) -> dict[str, str]:
-    """
-    Try to map technical speaker labels (A, B, SPEAKER_00, etc.)
-    to explicit names when the transcript line contains both a speaker label
-    and a self-introduction.
-
-    This is deliberately conservative.
-    """
     alias_map: dict[str, str] = {}
     if not transcript:
         return alias_map
@@ -287,9 +257,6 @@ def apply_speaker_aliases(
     segments: List[Dict[str, Any]],
     alias_map: dict[str, str],
 ) -> List[Dict[str, Any]]:
-    """
-    Attach speaker_name/speaker_display fields without losing original labels.
-    """
     out: List[Dict[str, Any]] = []
     for seg in segments:
         speaker = str(seg.get("speaker", "")).strip()
@@ -303,19 +270,8 @@ def apply_speaker_aliases(
     return out
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
 def diarize_audio(wav_path: str, n_speakers: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
-    """
-    Returns a list of {"start": float, "end": float, "speaker": str} dicts,
-    or None if diarization is unavailable/failed.
-
-    Tries pyannote first (best accuracy), falls back to resemblyzer.
-    """
     segments = _diarize_pyannote(wav_path, n_speakers)
     if segments is not None:
         return segments
-
     return _diarize_resemblyzer(wav_path, n_speakers)

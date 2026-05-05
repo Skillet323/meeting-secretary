@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -8,6 +8,7 @@ import {
   Chip,
   Container,
   Grid,
+  IconButton,
   LinearProgress,
   List,
   ListItem,
@@ -24,7 +25,9 @@ import {
   TableHead,
   TableRow,
   Typography,
+  Tooltip as MuiTooltip,
 } from "@mui/material";
+import { createTheme, ThemeProvider } from "@mui/material/styles";
 import {
   Upload,
   Download,
@@ -34,9 +37,13 @@ import {
   Analytics,
   BarChart as BarChartIcon,
   Storage,
-  Speed,
   EventNote,
   RecordVoiceOver,
+  Dashboard as DashboardIcon,
+  Circle,
+  TrendingUp,
+  Task,
+  AccessTime,
 } from "@mui/icons-material";
 import {
   AreaChart,
@@ -54,6 +61,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  ReferenceLine,
 } from "recharts";
 import { format } from "date-fns";
 
@@ -66,514 +74,474 @@ import {
   getEvaluations,
   getMeetings,
   evaluateMeeting,
+  getStats,
 } from "./api";
 
-function safeNumber(value, digits = 1) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return "—";
-  return num.toFixed(digits);
+// ─── dark theme ───────────────────────────────────────────────────────────────
+const theme = createTheme({
+  palette: {
+    mode: "dark",
+    primary: { main: "#4fc3f7" },
+    secondary: { main: "#a78bfa" },
+    background: { default: "#0d1117", paper: "#161b22" },
+    text: { primary: "#e6edf3", secondary: "#8b949e" },
+    divider: "#30363d",
+  },
+  shape: { borderRadius: 8 },
+  components: {
+    MuiPaper: { styleOverrides: { root: { backgroundImage: "none", border: "1px solid #30363d" } } },
+    MuiCard: { styleOverrides: { root: { backgroundImage: "none", border: "1px solid #30363d" } } },
+    MuiTableCell: { styleOverrides: { root: { borderColor: "#30363d" } } },
+  },
+});
+
+// ─── constants ────────────────────────────────────────────────────────────────
+const PALETTE = ["#4fc3f7", "#a78bfa", "#34d399", "#f59e0b", "#f87171", "#38bdf8"];
+const GREEN = "#34d399";
+const RED = "#f87171";
+const YELLOW = "#f59e0b";
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+function safeN(v, d = 1) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n.toFixed(d) : "—";
+}
+function getMeetingId(e) {
+  return e?.meeting?.id ?? e?.meeting_id ?? e?.id ?? null;
+}
+function asDate(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+}
+function formatDate(v) {
+  const d = asDate(v);
+  return d ? format(d, "yyyy-MM-dd HH:mm") : "—";
 }
 
-function taskLabel(task) {
-  return task?.description || "Untitled task";
-}
-
-function getMeetingId(entry) {
-  return entry?.meeting?.id ?? entry?.meeting_id ?? entry?.id ?? null;
-}
-
-function asDate(value) {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function formatDate(value) {
-  const d = asDate(value);
-  if (!d) return "—";
-  return format(d, "yyyy-MM-dd HH:mm");
-}
-
-function fmtPct(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "—";
-  return `${(n * 100).toFixed(1)}%`;
-}
-
-const METRIC_PALETTE = ["#1976d2", "#9c27b0", "#2e7d32", "#ed6c02", "#d32f2f", "#0288d1"];
-
-export default function App() {
-  const [meetings, setMeetings] = useState([]);
-  const [selectedMeeting, setSelectedMeeting] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState("transcript");
-  const [processingStatus, setProcessingStatus] = useState("");
-  const [recentMetrics, setRecentMetrics] = useState([]);
-  const [evaluations, setEvaluations] = useState([]);
-  const [evaluating, setEvaluating] = useState(false);
-  const [evaluationMessage, setEvaluationMessage] = useState("");
-
-  const loadDashboardData = async (preferredMeetingId = null) => {
-    try {
-      const [metricsResp, evalResp, meetingsResp] = await Promise.all([
-        getRecentMetrics(20).catch(() => ({ metrics: [] })),
-        getEvaluations(20).catch(() => ({ evaluations: [] })),
-        getMeetings(20).catch(() => ({ meetings: [] })),
-      ]);
-
-      const meetingsList = meetingsResp.meetings || [];
-      setRecentMetrics(metricsResp.metrics || []);
-      setEvaluations(evalResp.evaluations || []);
-      setMeetings(meetingsList);
-
-      if (preferredMeetingId) {
-        const current = meetingsList.find((m) => getMeetingId(m) === preferredMeetingId);
-        if (current) {
-          setSelectedMeeting(current);
-          return;
-        }
-      }
-
-      if (!selectedMeeting && meetingsList.length > 0) {
-        setSelectedMeeting(meetingsList[0]);
-        setActiveTab("transcript");
-      }
-    } catch {
-      // Keep UI usable even if dashboard refresh fails.
-    }
-  };
-
-  useEffect(() => {
-    loadDashboardData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleUpload = async (file) => {
-    setUploading(true);
-    setProgress(0);
-    setError(null);
-    setProcessingStatus("Uploading file...");
-
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await uploadMeeting(formData, (uploadPercent) => {
-        setProgress(Math.round((uploadPercent / 100) * 5));
-      });
-
-      const { meeting_id } = response;
-      setProgress(5);
-      setProcessingStatus("Processing started...");
-
-      let pollInterval = null;
-
-      const poll = async () => {
-        try {
-          const prog = await getMeetingProgress(meeting_id);
-          setProgress(5 + Math.round((prog.progress ?? 0) * 0.95));
-          setProcessingStatus(prog.message || prog.current_stage || "");
-
-          if (prog.status === "completed") {
-            if (pollInterval) clearInterval(pollInterval);
-            const meetingData = await getMeeting(meeting_id);
-            setSelectedMeeting(meetingData);
-            setMeetings((prev) => [meetingData, ...prev.filter((m) => getMeetingId(m) !== meeting_id)]);
-            setUploading(false);
-            setTimeout(() => {
-              setProgress(0);
-              setProcessingStatus("");
-            }, 1000);
-            loadDashboardData(meeting_id);
-          } else if (prog.status === "failed") {
-            if (pollInterval) clearInterval(pollInterval);
-            setError(prog.message || "Processing failed");
-            setUploading(false);
-            setProcessingStatus("");
-          }
-        } catch (err) {
-          if (pollInterval) clearInterval(pollInterval);
-          setError(err.response?.data?.detail || "Polling error");
-          setUploading(false);
-          setProcessingStatus("");
-        }
-      };
-
-      pollInterval = setInterval(poll, 1500);
-      await poll();
-    } catch (err) {
-      setError(err.response?.data?.detail || "Upload failed");
-      setUploading(false);
-      setProcessingStatus("");
-    }
-  };
-
-  const refreshMeeting = async (id) => {
-    try {
-      const data = await getMeeting(id);
-      setSelectedMeeting(data);
-      setMeetings((prev) => [data, ...prev.filter((m) => getMeetingId(m) !== id)]);
-    } catch {
-      setError("Failed to load meeting");
-    }
-  };
-
-  const exportData = async (formatName) => {
-    const meetingId = getMeetingId(selectedMeeting);
-    if (!meetingId) return;
-    try {
-      const blob = await exportMeeting(meetingId, formatName);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `meeting-${meetingId}.${formatName}`;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch {
-      setError("Export failed");
-    }
-  };
-
-  const runEvaluation = async () => {
-    const meetingId = getMeetingId(selectedMeeting);
-    if (!meetingId) return;
-    setEvaluating(true);
-    setEvaluationMessage("Running evaluation...");
-    try {
-      const res = await evaluateMeeting(meetingId);
-      setEvaluationMessage(`Evaluation completed: ${safeNumber(res.overall_quality_score, 1)}/100`);
-      await loadDashboardData(meetingId);
-    } catch (err) {
-      setError(err.response?.data?.detail || "Evaluation failed");
-    } finally {
-      setEvaluating(false);
-      setTimeout(() => setEvaluationMessage(""), 2500);
-    }
-  };
-
-  const selectedMeetingId = getMeetingId(selectedMeeting);
-  const selectedMetadata = selectedMeeting?.metadata || {};
-  const selectedSegments = selectedMeeting?.segments || [];
-  const selectedTasks = selectedMeeting?.tasks || [];
-  const transcript = selectedMeeting?.meeting?.transcript || selectedMeeting?.transcript || "";
-  const speakerAliases = selectedMetadata?.speaker_aliases || {};
-
-  const selectedMeetingEvaluations = useMemo(() => {
-    if (!selectedMeetingId) return [];
-    return evaluations.filter((run) => run.meeting_id === selectedMeetingId);
-  }, [evaluations, selectedMeetingId]);
-
-  const latestEvaluation = selectedMeetingEvaluations[0] || null;
-
-  const processingRows = useMemo(() => {
-    return [...recentMetrics]
-      .sort((a, b) => Number(a.meeting_id || 0) - Number(b.meeting_id || 0))
-      .map((m) => ({
-        meeting_id: m.meeting_id,
-        total: Number(m.total_latency_sec || 0),
-        transcribe: Number(m.transcribe_latency_sec || 0),
-        task: Number(m.task_latency_sec || 0),
-        assign: Number(m.assign_latency_sec || 0),
-        confidence: Number(m.transcript_confidence || 0),
-        tasks: Number(m.tasks_count || 0),
-      }));
-  }, [recentMetrics]);
-
-  const evaluationRows = useMemo(() => {
-    return [...evaluations].map((e) => ({
-      run: `#${e.id}`,
-      overall: Number(e.overall_score || 0),
-      wer: Number(e.wer ?? 0),
-      cer: Number(e.cer ?? 0),
-      f1: Number(e.task_set_f1 ?? 0),
-      precision: Number(e.task_set_precision ?? 0),
-      recall: Number(e.task_set_recall ?? 0),
-      fallback: e.task_fallback_used ? 1 : 0,
-      provider: e.task_provider || "unknown",
-      parse: e.task_parse_stage || "—",
-      model: e.model_task || "unknown",
-    }));
-  }, [evaluations]);
-
-  const taskComparison = latestEvaluation
-    ? [
-        { name: "Matched", value: Number(latestEvaluation.matched_tasks || 0) },
-        { name: "Predicted", value: Number(latestEvaluation.predicted_tasks || 0) },
-        { name: "Gold", value: Number(latestEvaluation.gold_tasks || 0) },
-      ]
-    : [];
-
-  const scoreTrend = evaluationRows.map((r) => ({
-    name: r.run,
-    overall: r.overall,
-    wer: r.wer,
-    f1: r.f1,
-  }));
-
+// ─── chart tooltip ────────────────────────────────────────────────────────────
+function CT({ active, payload, label, unit = "" }) {
+  if (!active || !payload?.length) return null;
   return (
-    <Container maxWidth="xl" sx={{ py: 3 }}>
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2, mb: 3 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 800 }}>
-            Meeting Secretary
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Automated transcription, task extraction and evaluation dashboard
-          </Typography>
-        </Box>
-        <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-          <Button component="label" variant="contained" startIcon={<Upload />} disabled={uploading}>
-            Upload audio
-            <input
-              hidden
-              type="file"
-              accept="audio/*"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleUpload(file);
-                e.target.value = "";
-              }}
-            />
-          </Button>
-          <Button variant="outlined" startIcon={<Refresh />} onClick={() => loadDashboardData(selectedMeetingId)}>
-            Refresh dashboard
-          </Button>
-        </Box>
-      </Box>
-
-      {uploading ? (
-        <Paper sx={{ p: 2, mb: 3 }}>
-          <Typography variant="subtitle2" gutterBottom>
-            {processingStatus || "Processing..."}
-          </Typography>
-          <LinearProgress variant="determinate" value={progress} />
-          <Typography variant="caption" color="text.secondary">
-            {progress}%
-          </Typography>
-        </Paper>
-      ) : null}
-
-      {evaluationMessage ? (
-        <Alert severity="success" sx={{ mb: 3 }}>
-          {evaluationMessage}
-        </Alert>
-      ) : null}
-
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={3}>
-          <Paper sx={{ p: 2, mb: 2 }} variant="outlined">
-            <Typography variant="h6" gutterBottom>
-              Meetings
-            </Typography>
-            <List dense sx={{ maxHeight: 680, overflow: "auto" }}>
-              {meetings.map((meeting) => {
-                const id = getMeetingId(meeting);
-                const status = meeting?.metadata?.status || meeting?.metadata?.current_stage || "processed";
-                const selected = id === selectedMeetingId;
-                return (
-                  <ListItem key={id} disablePadding sx={{ mb: 0.5 }}>
-                    <ListItemButton
-                      selected={selected}
-                      onClick={() => {
-                        setSelectedMeeting(meeting);
-                        setActiveTab("transcript");
-                      }}
-                    >
-                      <ListItemText
-                        primary={`Meeting #${id}`}
-                        secondary={
-                          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                            <Typography variant="caption" color="text.secondary">
-                              {formatDate(meeting?.meeting?.created_at || meeting?.metadata?.created_at)}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {status}
-                            </Typography>
-                          </Box>
-                        }
-                      />
-                    </ListItemButton>
-                  </ListItem>
-                );
-              })}
-              {!meetings.length ? (
-                <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 1 }}>
-                  No meetings yet.
-                </Typography>
-              ) : null}
-            </List>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={9}>
-          {selectedMeeting ? (
-            <Paper sx={{ mb: 3 }} variant="outlined">
-              <Box sx={{ borderBottom: 1, borderColor: "divider", px: 3, py: 1 }}>
-                <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} variant="scrollable" scrollButtons="auto">
-                  <Tab label="Transcript" value="transcript" icon={<Timeline />} iconPosition="start" />
-                  <Tab label="Tasks" value="tasks" icon={<Assessment />} iconPosition="start" />
-                  <Tab label="Metrics" value="metrics" icon={<BarChartIcon />} iconPosition="start" />
-                  <Tab label="Analytics" value="analytics" icon={<Analytics />} iconPosition="start" />
-                </Tabs>
-              </Box>
-
-              <Box sx={{ p: 3 }}>
-                {activeTab === "transcript" && (
-                  <TranscriptView segments={selectedSegments} transcript={transcript} metadata={selectedMetadata} speakerAliases={speakerAliases} />
-                )}
-
-                {activeTab === "tasks" && <TasksView tasks={selectedTasks} />}
-
-                {activeTab === "metrics" && (
-                  <MetricsView
-                    metadata={selectedMetadata}
-                    latestEvaluation={latestEvaluation}
-                    runEvaluation={runEvaluation}
-                    evaluating={evaluating}
-                  />
-                )}
-
-                {activeTab === "analytics" && (
-                  <AnalyticsView
-                    processingRows={processingRows}
-                    evaluationRows={evaluationRows}
-                    taskComparison={taskComparison}
-                    latestEvaluation={latestEvaluation}
-                  />
-                )}
-              </Box>
-            </Paper>
-          ) : (
-            <Paper sx={{ p: 6, textAlign: "center" }} variant="outlined">
-              <Typography variant="h6" color="text.secondary">
-                Upload an audio file to get started
-              </Typography>
-            </Paper>
-          )}
-
-          <Box sx={{ display: "flex", gap: 2, mb: 3, flexWrap: "wrap" }}>
-            <Button variant="outlined" startIcon={<Download />} onClick={() => exportData("json")} disabled={!selectedMeeting}>
-              JSON
-            </Button>
-            <Button variant="outlined" startIcon={<Download />} onClick={() => exportData("csv")} disabled={!selectedMeeting}>
-              CSV
-            </Button>
-            <Button variant="outlined" startIcon={<Download />} onClick={() => exportData("md")} disabled={!selectedMeeting}>
-              Markdown
-            </Button>
-            <Button variant="outlined" startIcon={<Refresh />} onClick={() => refreshMeeting(selectedMeetingId)} disabled={!selectedMeeting}>
-              Refresh meeting
-            </Button>
-            <Button variant="outlined" startIcon={<EventNote />} onClick={runEvaluation} disabled={!selectedMeeting || evaluating}>
-              Run evaluation
-            </Button>
-          </Box>
-        </Grid>
-      </Grid>
-
-      <Snackbar open={!!error} autoHideDuration={7000} onClose={() => setError(null)}>
-        <Alert severity="error" onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      </Snackbar>
-    </Container>
+    <Paper sx={{ p: 1.5 }}>
+      <Typography variant="caption" color="text.secondary">{label}</Typography>
+      {payload.map((p) => (
+        <Typography key={p.dataKey} variant="body2" sx={{ color: p.color }}>
+          {p.name}: <strong>{safeN(p.value, 2)}{unit}</strong>
+        </Typography>
+      ))}
+    </Paper>
   );
 }
 
-function TranscriptView({ segments, transcript, metadata, speakerAliases }) {
+// ─── KPI card ─────────────────────────────────────────────────────────────────
+function KpiCard({ title, value, sub, icon, color = "#4fc3f7" }) {
   return (
-    <Box>
-      <Grid container spacing={2} sx={{ mb: 2 }}>
-        <Grid item xs={12} md={3}>
-          <Card variant="outlined"><CardContent><Typography variant="overline" color="text.secondary">Language</Typography><Typography variant="h6">{metadata?.language || "unknown"}</Typography></CardContent></Card>
-        </Grid>
-        <Grid item xs={12} md={3}>
-          <Card variant="outlined"><CardContent><Typography variant="overline" color="text.secondary">Diarization</Typography><Typography variant="h6">{metadata?.has_diarization ? "enabled" : "off"}</Typography></CardContent></Card>
-        </Grid>
-        <Grid item xs={12} md={3}>
-          <Card variant="outlined"><CardContent><Typography variant="overline" color="text.secondary">Transcript confidence</Typography><Typography variant="h6">{typeof metadata?.transcript_confidence === "number" ? safeNumber(metadata.transcript_confidence, 2) : "—"}</Typography></CardContent></Card>
-        </Grid>
-        <Grid item xs={12} md={3}>
-          <Card variant="outlined"><CardContent><Typography variant="overline" color="text.secondary">Speaker aliases</Typography><Typography variant="h6">{Object.keys(speakerAliases || {}).length}</Typography></CardContent></Card>
-        </Grid>
-      </Grid>
-
-      {Object.keys(speakerAliases || {}).length ? (
-        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-          <Typography variant="subtitle2" gutterBottom>
-            Inferred speaker aliases
-          </Typography>
-          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-            {Object.entries(speakerAliases).map(([speaker, name]) => (
-              <Chip key={speaker} label={`${speaker} → ${name}`} size="small" />
-            ))}
+    <Card sx={{ height: "100%", overflow: "hidden", position: "relative" }}>
+      <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4, bgcolor: color, borderRadius: "8px 0 0 8px" }} />
+      <CardContent sx={{ pl: 3 }}>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <Box>
+            <Typography variant="overline" sx={{ color: "text.secondary", fontSize: "0.65rem", letterSpacing: 1 }}>{title}</Typography>
+            <Typography variant="h4" sx={{ fontWeight: 800, color, lineHeight: 1.1 }}>{value}</Typography>
+            {sub && <Typography variant="caption" color="text.secondary">{sub}</Typography>}
           </Box>
-        </Paper>
-      ) : null}
-
-      <Paper variant="outlined" sx={{ p: 2, mb: 2, whiteSpace: "pre-wrap" }}>
-        {transcript || "No transcript available"}
-      </Paper>
-
-      {segments?.length ? (
-        <Box>
-          <Typography variant="h6" gutterBottom>
-            Segments
-          </Typography>
-          {segments.map((segment, idx) => (
-            <Paper key={idx} variant="outlined" sx={{ p: 2, mb: 1 }}>
-              <Typography variant="caption" color="text.secondary">
-                {safeNumber(segment.start, 1)}s — {safeNumber(segment.end, 1)}s
-                {segment.speaker ? ` • ${segment.speaker}` : ""}
-                {typeof segment.confidence === "number" ? ` • conf ${safeNumber(segment.confidence, 2)}` : ""}
-              </Typography>
-              <Typography>{segment.text}</Typography>
-            </Paper>
-          ))}
+          {icon && <Box sx={{ color, opacity: 0.5, mt: 0.5 }}>{React.cloneElement(icon, { sx: { fontSize: 38 } })}</Box>}
         </Box>
-      ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── status dot ───────────────────────────────────────────────────────────────
+function StatusDot({ status }) {
+  const color = status === "completed" ? GREEN : status === "processing" ? YELLOW : status === "failed" ? RED : "#8b949e";
+  return (
+    <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+      <Circle sx={{ fontSize: 8, color }} />
+      <Typography variant="caption" sx={{ color }}>{status || "unknown"}</Typography>
     </Box>
   );
 }
 
-function TasksView({ tasks }) {
-  if (!tasks?.length) {
-    return <Typography color="text.secondary">No tasks extracted yet.</Typography>;
-  }
+// ─── panel ────────────────────────────────────────────────────────────────────
+function Panel({ title, children, action, minH = 0 }) {
+  return (
+    <Card sx={{ height: "100%" }}>
+      <CardContent sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+          <Typography variant="overline" sx={{ color: "text.secondary", fontSize: "0.65rem", letterSpacing: 1, fontWeight: 700 }}>{title}</Typography>
+          {action}
+        </Box>
+        <Box sx={{ flex: 1, minHeight: minH }}>{children}</Box>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Empty({ label = "No data yet" }) {
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", minHeight: 120 }}>
+      <Typography variant="body2" color="text.secondary">{label}</Typography>
+    </Box>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DASHBOARD PAGE
+// ─────────────────────────────────────────────────────────────────────────────
+function DashboardPage({ metrics, evaluations, meetings, stats, onRefresh, refreshing }) {
+  const rows = useMemo(
+    () =>
+      [...metrics]
+        .sort((a, b) => Number(a.meeting_id) - Number(b.meeting_id))
+        .map((m) => ({
+          name: `#${m.meeting_id}`,
+          total: +(m.total_latency_sec || 0),
+          transcribe: +(m.transcribe_latency_sec || 0),
+          task: +(m.task_latency_sec || 0),
+          assign: +(m.assign_latency_sec || 0),
+          confidence: +(m.transcript_confidence || 0),
+          tasks: +(m.tasks_count || 0),
+        })),
+    [metrics]
+  );
+
+  const evalRows = useMemo(
+    () =>
+      [...evaluations]
+        .slice(0, 12)
+        .reverse()
+        .map((e) => ({
+          name: `#${e.id}`,
+          overall: +(e.overall_score || 0),
+          wer: +(e.wer ?? 0),
+          f1: +(e.task_set_f1 ?? 0),
+        })),
+    [evaluations]
+  );
+
+  const avgBreakdown = [
+    { name: "Transcription", value: metrics.length ? metrics.reduce((s, m) => s + (m.transcribe_latency_sec || 0), 0) / metrics.length : 0 },
+    { name: "Task extract", value: metrics.length ? metrics.reduce((s, m) => s + (m.task_latency_sec || 0), 0) / metrics.length : 0 },
+    { name: "Assignment", value: metrics.length ? metrics.reduce((s, m) => s + (m.assign_latency_sec || 0), 0) / metrics.length : 0 },
+  ];
+
+  const confRows = rows.filter((r) => r.confidence > 0);
+  const taskRows = rows.filter((r) => r.tasks > 0);
+  const langData = stats?.language_distribution || [];
 
   return (
     <Box>
-      <Typography variant="h6" gutterBottom>
-        Extracted Tasks
-      </Typography>
+      {/* header */}
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 800 }}>System Dashboard</Typography>
+          <Typography variant="caption" color="text.secondary">
+            Live overview · {format(new Date(), "HH:mm:ss")}
+          </Typography>
+        </Box>
+        <Button size="small" variant="outlined" startIcon={<Refresh />} onClick={onRefresh} disabled={refreshing}>
+          Refresh
+        </Button>
+      </Box>
+
+      {/* KPIs */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={6} md={3}>
+          <KpiCard title="Total meetings" value={stats?.total_meetings ?? meetings.length} icon={<EventNote />} color="#4fc3f7" />
+        </Grid>
+        <Grid item xs={6} md={3}>
+          <KpiCard title="Tasks extracted" value={stats?.total_tasks ?? "—"} sub={`avg ${safeN(stats?.avg_tasks_per_meeting, 1)}/meeting`} icon={<Task />} color="#a78bfa" />
+        </Grid>
+        <Grid item xs={6} md={3}>
+          <KpiCard title="Avg latency" value={`${safeN(stats?.avg_total_latency_sec, 1)}s`} icon={<AccessTime />} color="#f59e0b" />
+        </Grid>
+        <Grid item xs={6} md={3}>
+          <KpiCard title="Avg confidence" value={`${safeN((stats?.avg_transcript_confidence || 0) * 100, 1)}%`} icon={<RecordVoiceOver />} color="#34d399" />
+        </Grid>
+      </Grid>
+
+      {/* Row 1: latency stacked area + donut */}
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid item xs={12} md={8}>
+          <Panel title="Processing latency (s) · per meeting" minH={280}>
+            {rows.length ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <AreaChart data={rows} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                  <defs>
+                    {["transcribe", "task", "assign"].map((k, i) => (
+                      <linearGradient key={k} id={`g-${k}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={PALETTE[i]} stopOpacity={0.4} />
+                        <stop offset="95%" stopColor={PALETTE[i]} stopOpacity={0} />
+                      </linearGradient>
+                    ))}
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
+                  <XAxis dataKey="name" tick={{ fill: "#8b949e", fontSize: 11 }} />
+                  <YAxis tick={{ fill: "#8b949e", fontSize: 11 }} unit="s" />
+                  <Tooltip content={<CT unit="s" />} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Area type="monotone" dataKey="transcribe" stackId="1" fill="url(#g-transcribe)" stroke={PALETTE[0]} strokeWidth={2} name="Transcribe" />
+                  <Area type="monotone" dataKey="task" stackId="1" fill="url(#g-task)" stroke={PALETTE[1]} strokeWidth={2} name="Task extract" />
+                  <Area type="monotone" dataKey="assign" stackId="1" fill="url(#g-assign)" stroke={PALETTE[2]} strokeWidth={2} name="Assign" />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : <Empty />}
+          </Panel>
+        </Grid>
+
+        <Grid item xs={12} md={4}>
+          <Panel title="Avg latency breakdown" minH={280}>
+            {metrics.length ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <PieChart>
+                  <Pie data={avgBreakdown} cx="50%" cy="50%" innerRadius={60} outerRadius={95} paddingAngle={3} dataKey="value">
+                    {avgBreakdown.map((_, i) => <Cell key={i} fill={PALETTE[i]} />)}
+                  </Pie>
+                  <Tooltip formatter={(v) => `${safeN(v, 2)}s`} contentStyle={{ background: "#161b22", border: "1px solid #30363d" }} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : <Empty />}
+          </Panel>
+        </Grid>
+      </Grid>
+
+      {/* Row 2: confidence bar + tasks bar */}
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid item xs={12} md={6}>
+          <Panel title="Transcript confidence · per meeting" minH={260}>
+            {confRows.length ? (
+              <ResponsiveContainer width="100%" height={230}>
+                <BarChart data={confRows} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
+                  <XAxis dataKey="name" tick={{ fill: "#8b949e", fontSize: 11 }} />
+                  <YAxis domain={[0, 1]} tick={{ fill: "#8b949e", fontSize: 11 }} />
+                  <Tooltip content={<CT />} />
+                  <ReferenceLine y={0.8} stroke={GREEN} strokeDasharray="4 2" label={{ value: "target 0.8", fill: GREEN, fontSize: 10 }} />
+                  <Bar dataKey="confidence" name="Confidence" radius={[4, 4, 0, 0]}>
+                    {confRows.map((d, i) => <Cell key={i} fill={d.confidence >= 0.8 ? GREEN : d.confidence >= 0.6 ? YELLOW : RED} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : <Empty />}
+          </Panel>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <Panel title="Tasks extracted · per meeting" minH={260}>
+            {taskRows.length ? (
+              <ResponsiveContainer width="100%" height={230}>
+                <BarChart data={taskRows} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
+                  <XAxis dataKey="name" tick={{ fill: "#8b949e", fontSize: 11 }} />
+                  <YAxis tick={{ fill: "#8b949e", fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip content={<CT />} />
+                  <Bar dataKey="tasks" name="Tasks" fill={PALETTE[1]} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : <Empty />}
+          </Panel>
+        </Grid>
+      </Grid>
+
+      {/* Row 3: eval trend + language pie */}
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid item xs={12} md={8}>
+          <Panel title="Evaluation score trend · overall / task-F1 / WER" minH={260}>
+            {evalRows.length ? (
+              <ResponsiveContainer width="100%" height={230}>
+                <LineChart data={evalRows} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
+                  <XAxis dataKey="name" tick={{ fill: "#8b949e", fontSize: 11 }} />
+                  <YAxis domain={[0, 100]} tick={{ fill: "#8b949e", fontSize: 11 }} />
+                  <Tooltip content={<CT />} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Line type="monotone" dataKey="overall" stroke={PALETTE[0]} strokeWidth={2} dot={{ r: 3 }} name="Overall" />
+                  <Line type="monotone" dataKey="f1" stroke={GREEN} strokeWidth={2} dot={{ r: 3 }} name="Task F1" />
+                  <Line type="monotone" dataKey="wer" stroke={RED} strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 2" name="WER" />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : <Empty label="No evaluation runs yet" />}
+          </Panel>
+        </Grid>
+
+        <Grid item xs={12} md={4}>
+          <Panel title="Language distribution" minH={260}>
+            {langData.length ? (
+              <ResponsiveContainer width="100%" height={230}>
+                <PieChart>
+                  <Pie data={langData} cx="50%" cy="50%" outerRadius={85} paddingAngle={3} dataKey="value" nameKey="name"
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                    {langData.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: "#161b22", border: "1px solid #30363d" }} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : <Empty />}
+          </Panel>
+        </Grid>
+      </Grid>
+
+      {/* Recent meetings table */}
+      <Panel title="Recent meetings">
+        {meetings.length ? (
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Meeting</TableCell>
+                  <TableCell>Date</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell align="right">Tasks</TableCell>
+                  <TableCell align="right">Lang</TableCell>
+                  <TableCell align="right">Confidence</TableCell>
+                  <TableCell align="right">Diarization</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {meetings.slice(0, 12).map((meeting) => {
+                  const id = getMeetingId(meeting);
+                  const meta = meeting?.metadata || {};
+                  return (
+                    <TableRow key={id} hover>
+                      <TableCell><Typography variant="body2" sx={{ fontWeight: 700 }}>#{id}</Typography></TableCell>
+                      <TableCell><Typography variant="caption" color="text.secondary">{formatDate(meeting?.meeting?.created_at || meta?.created_at)}</Typography></TableCell>
+                      <TableCell><StatusDot status={meta?.status || "completed"} /></TableCell>
+                      <TableCell align="right">{meeting?.tasks?.length ?? meta?.tasks_count ?? "—"}</TableCell>
+                      <TableCell align="right">{meta?.language || "—"}</TableCell>
+                      <TableCell align="right">
+                        {typeof meta?.transcript_confidence === "number"
+                          ? `${(meta.transcript_confidence * 100).toFixed(1)}%` : "—"}
+                      </TableCell>
+                      <TableCell align="right">
+                        <Chip label={meta?.has_diarization ? "on" : "off"} size="small"
+                          color={meta?.has_diarization ? "success" : "default"} sx={{ fontSize: "0.65rem", height: 20 }} />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        ) : <Empty label="No meetings yet. Upload an audio file to get started." />}
+      </Panel>
+    </Box>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRANSCRIPT VIEW
+// ─────────────────────────────────────────────────────────────────────────────
+function TranscriptView({ segments, transcript, metadata, speakerAliases }) {
+  return (
+    <Box>
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        {[
+          { label: "Language", value: metadata?.language || "unknown" },
+          { label: "Diarization", value: metadata?.has_diarization ? "enabled" : "off" },
+          { label: "Confidence", value: typeof metadata?.transcript_confidence === "number" ? `${(metadata.transcript_confidence * 100).toFixed(1)}%` : "—" },
+          { label: "Speaker aliases", value: Object.keys(speakerAliases || {}).length },
+        ].map(({ label, value }) => (
+          <Grid item xs={6} md={3} key={label}>
+            <Card variant="outlined">
+              <CardContent>
+                <Typography variant="overline" color="text.secondary">{label}</Typography>
+                <Typography variant="h6">{value}</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+
+      {Object.keys(speakerAliases || {}).length > 0 && (
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+          <Typography variant="subtitle2" gutterBottom>Inferred speaker aliases</Typography>
+          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+            {Object.entries(speakerAliases).map(([s, n]) => (
+              <Chip key={s} label={`${s} → ${n}`} size="small" color="primary" variant="outlined" />
+            ))}
+          </Box>
+        </Paper>
+      )}
+
+      <Paper variant="outlined" sx={{ p: 2, mb: 2, whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: "0.85rem", maxHeight: 480, overflow: "auto" }}>
+        {transcript || "No transcript available"}
+      </Paper>
+
+      {segments?.length > 0 && (
+        <Box>
+          <Typography variant="h6" gutterBottom>Segments ({segments.length})</Typography>
+          {segments.map((seg, i) => (
+            <Paper key={i} variant="outlined" sx={{ p: 1.5, mb: 0.75 }}>
+              <Typography variant="caption" color="text.secondary">
+                {safeN(seg.start, 1)}s — {safeN(seg.end, 1)}s
+                {seg.speaker ? ` · ${seg.speaker}` : ""}
+                {typeof seg.confidence === "number" ? ` · conf ${safeN(seg.confidence, 2)}` : ""}
+              </Typography>
+              <Typography variant="body2">{seg.text}</Typography>
+            </Paper>
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TASKS VIEW
+// ─────────────────────────────────────────────────────────────────────────────
+function TasksView({ tasks }) {
+  if (!tasks?.length) return <Typography color="text.secondary">No tasks extracted yet.</Typography>;
+  return (
+    <Box>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+        <Typography variant="h6">Extracted Tasks</Typography>
+        <Chip label={`${tasks.length} tasks`} color="primary" size="small" />
+      </Box>
       <TableContainer component={Paper} variant="outlined">
         <Table size="small">
           <TableHead>
             <TableRow>
               <TableCell width="4%">#</TableCell>
-              <TableCell width="42%">Task</TableCell>
+              <TableCell width="38%">Task</TableCell>
               <TableCell width="16%">Assignee</TableCell>
               <TableCell width="14%">Deadline</TableCell>
+              <TableCell width="16%">Confidence</TableCell>
               <TableCell width="12%">Source</TableCell>
-              <TableCell width="12%">Speaker</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {tasks.map((task, index) => (
-              <TableRow key={task.id || index}>
-                <TableCell>{index + 1}</TableCell>
-                <TableCell>
-                  <Typography variant="body2" sx={{ fontWeight: 500 }}>{taskLabel(task)}</Typography>
-                  {task.source_snippet ? <Typography variant="caption" color="text.secondary">{task.source_snippet}</Typography> : null}
-                </TableCell>
-                <TableCell>{task.assignee || task.assignee_hint || "—"}</TableCell>
-                <TableCell>{task.deadline || task.deadline_hint || "—"}</TableCell>
-                <TableCell>{task.source || "—"}</TableCell>
-                <TableCell>{task.speaker_hint || task.speaker_resolved || "—"}</TableCell>
-              </TableRow>
-            ))}
+            {tasks.map((task, i) => {
+              const raw = (() => { try { return task.raw ? JSON.parse(task.raw) : task; } catch { return task; } })();
+              const conf = raw?.assignment_confidence;
+              return (
+                <TableRow key={task.id || i} hover>
+                  <TableCell>{i + 1}</TableCell>
+                  <TableCell>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>{task.description || "Untitled"}</Typography>
+                    {raw?.source_snippet && (
+                      <Typography variant="caption" color="text.secondary" sx={{ fontStyle: "italic" }}>"{raw.source_snippet}"</Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>{task.assignee || raw?.assignee_hint || "—"}</TableCell>
+                  <TableCell>{task.deadline || raw?.deadline_hint || "—"}</TableCell>
+                  <TableCell>
+                    {typeof conf === "number" ? (
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <LinearProgress variant="determinate" value={conf * 100} sx={{ flex: 1, height: 6, borderRadius: 3,
+                          "& .MuiLinearProgress-bar": { bgcolor: conf > 0.8 ? GREEN : conf > 0.5 ? YELLOW : RED } }} />
+                        <Typography variant="caption">{(conf * 100).toFixed(0)}%</Typography>
+                      </Box>
+                    ) : "—"}
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={raw?.assignee_source || task.source || "—"} size="small" variant="outlined" sx={{ fontSize: "0.6rem", height: 20 }} />
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </TableContainer>
@@ -581,76 +549,61 @@ function TasksView({ tasks }) {
   );
 }
 
-function MetricsCard({ title, value, caption, icon }) {
-  return (
-    <Card variant="outlined">
-      <CardContent>
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
-          <Box>
-            <Typography variant="overline" color="text.secondary">
-              {title}
-            </Typography>
-            <Typography variant="h5" sx={{ fontWeight: 800 }}>
-              {value}
-            </Typography>
-            {caption ? <Typography variant="body2" color="text.secondary">{caption}</Typography> : null}
-          </Box>
-          {icon ? <Box sx={{ color: "primary.main" }}>{icon}</Box> : null}
-        </Box>
-      </CardContent>
-    </Card>
-  );
-}
-
+// ─────────────────────────────────────────────────────────────────────────────
+// METRICS VIEW (per-meeting)
+// ─────────────────────────────────────────────────────────────────────────────
 function MetricsView({ metadata, latestEvaluation, runEvaluation, evaluating }) {
-  const modelLabel = `${metadata?.model_whisper || "unknown"} / ${metadata?.model_task || "unknown"}`;
-  const taskProvider = metadata?.task_provider || "unknown";
-  const parseStage = metadata?.task_parse_stage || "—";
-
-  const processBreakdown = [
-    { name: "Transcription", value: Number(metadata?.transcribe_time_sec || 0) },
-    { name: "Task extraction", value: Number(metadata?.task_time_sec || 0) },
-    { name: "Assignment", value: Number(metadata?.assign_time_sec || 0) },
+  const breakdown = [
+    { name: "Transcription", value: +(metadata?.transcribe_time_sec || 0) },
+    { name: "Task extract", value: +(metadata?.task_time_sec || 0) },
+    { name: "Assignment", value: +(metadata?.assign_time_sec || 0) },
   ];
-
   return (
     <Grid container spacing={3}>
-      <Grid item xs={12} md={4}>
-        <MetricsCard title="Model pair" value={modelLabel} caption="Current meeting" icon={<Storage />} />
-      </Grid>
-      <Grid item xs={12} md={4}>
-        <MetricsCard title="Transcript confidence" value={typeof metadata?.transcript_confidence === "number" ? safeNumber(metadata.transcript_confidence, 2) : "—"} caption="Heuristic Whisper confidence" icon={<RecordVoiceOver />} />
-      </Grid>
-      <Grid item xs={12} md={4}>
-        <MetricsCard title="Task provider" value={taskProvider} caption={`parse: ${parseStage}`} icon={<Assessment />} />
-      </Grid>
+      {[
+        { t: "Model pair", v: `${metadata?.model_whisper || "?"} / ${metadata?.model_task || "?"}`, ic: <Storage /> },
+        { t: "Confidence", v: typeof metadata?.transcript_confidence === "number" ? `${(metadata.transcript_confidence * 100).toFixed(1)}%` : "—", ic: <RecordVoiceOver /> },
+        { t: "Task provider", v: metadata?.task_provider || "—", ic: <Analytics /> },
+      ].map(({ t, v, ic }) => (
+        <Grid item xs={12} md={4} key={t}>
+          <Card variant="outlined">
+            <CardContent>
+              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                <Box>
+                  <Typography variant="overline" color="text.secondary">{t}</Typography>
+                  <Typography variant="h6" sx={{ wordBreak: "break-all" }}>{v}</Typography>
+                </Box>
+                <Box sx={{ color: "primary.main", opacity: 0.6 }}>{ic}</Box>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      ))}
 
-      <Grid item xs={12} md={3}>
-        <MetricsCard title="Audio size" value={metadata?.audio_size_bytes ? `${(metadata.audio_size_bytes / 1024 / 1024).toFixed(2)} MB` : "—"} />
-      </Grid>
-      <Grid item xs={12} md={3}>
-        <MetricsCard title="Duration" value={metadata?.audio_duration_sec ? `${safeNumber(metadata.audio_duration_sec, 1)} s` : "—"} />
-      </Grid>
-      <Grid item xs={12} md={3}>
-        <MetricsCard title="Segments" value={metadata?.segments_count ?? "—"} />
-      </Grid>
-      <Grid item xs={12} md={3}>
-        <MetricsCard title="Tasks" value={metadata?.tasks_count ?? "—"} />
-      </Grid>
+      {[
+        { t: "Audio size", v: metadata?.audio_size_bytes ? `${(metadata.audio_size_bytes / 1048576).toFixed(2)} MB` : "—" },
+        { t: "Duration", v: metadata?.audio_duration_sec ? `${safeN(metadata.audio_duration_sec, 1)}s` : "—" },
+        { t: "Segments", v: metadata?.segments_count ?? "—" },
+        { t: "Tasks found", v: metadata?.tasks_count ?? "—" },
+      ].map(({ t, v }) => (
+        <Grid item xs={6} md={3} key={t}>
+          <Card variant="outlined"><CardContent><Typography variant="overline" color="text.secondary">{t}</Typography><Typography variant="h6">{v}</Typography></CardContent></Card>
+        </Grid>
+      ))}
 
       <Grid item xs={12} md={6}>
         <Card variant="outlined">
           <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Processing time breakdown
-            </Typography>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={processBreakdown}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="value" fill="#1976d2" />
+            <Typography variant="h6" gutterBottom>Processing time breakdown</Typography>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={breakdown}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
+                <XAxis dataKey="name" tick={{ fill: "#8b949e", fontSize: 12 }} />
+                <YAxis unit="s" tick={{ fill: "#8b949e", fontSize: 12 }} />
+                <Tooltip formatter={(v) => `${safeN(v, 2)}s`} contentStyle={{ background: "#161b22", border: "1px solid #30363d" }} />
+                <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                  {breakdown.map((_, i) => <Cell key={i} fill={PALETTE[i]} />)}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -660,26 +613,21 @@ function MetricsView({ metadata, latestEvaluation, runEvaluation, evaluating }) 
       <Grid item xs={12} md={6}>
         <Card variant="outlined">
           <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Latest evaluation
-            </Typography>
+            <Typography variant="h6" gutterBottom>Latest evaluation</Typography>
             {latestEvaluation ? (
               <Box sx={{ display: "grid", gap: 1.5 }}>
-                <Typography variant="body2">Overall score: <strong>{safeNumber(latestEvaluation.overall_score, 1)}</strong>/100</Typography>
-                <Typography variant="body2">WER: <strong>{safeNumber(latestEvaluation.wer, 3)}</strong> • CER: <strong>{safeNumber(latestEvaluation.cer, 3)}</strong></Typography>
-                <Typography variant="body2">Task F1: <strong>{safeNumber(latestEvaluation.task_set_f1, 3)}</strong> • Precision: <strong>{safeNumber(latestEvaluation.task_set_precision, 3)}</strong> • Recall: <strong>{safeNumber(latestEvaluation.task_set_recall, 3)}</strong></Typography>
-                <Typography variant="body2">Matched tasks: <strong>{latestEvaluation.matched_tasks ?? 0}</strong> / {latestEvaluation.gold_tasks ?? 0}</Typography>
-                <Typography variant="body2">Provider: <strong>{latestEvaluation.task_provider || "unknown"}</strong> • parse: <strong>{latestEvaluation.task_parse_stage || "—"}</strong> • fallback: <strong>{String(Boolean(latestEvaluation.task_fallback_used))}</strong></Typography>
-                <Button variant="contained" onClick={runEvaluation} disabled={evaluating} startIcon={<Analytics />}>
+                <Typography variant="body2">Overall: <strong>{safeN(latestEvaluation.overall_score, 1)}</strong>/100</Typography>
+                <Typography variant="body2">WER: <strong>{safeN(latestEvaluation.wer, 3)}</strong> · CER: <strong>{safeN(latestEvaluation.cer, 3)}</strong></Typography>
+                <Typography variant="body2">Task F1: <strong>{safeN(latestEvaluation.task_set_f1, 3)}</strong></Typography>
+                <Typography variant="body2">Matched: <strong>{latestEvaluation.matched_tasks ?? 0}</strong> / {latestEvaluation.gold_tasks ?? 0}</Typography>
+                <Button variant="contained" size="small" startIcon={<Analytics />} onClick={runEvaluation} disabled={evaluating}>
                   {evaluating ? "Running..." : "Re-run evaluation"}
                 </Button>
               </Box>
             ) : (
               <Box sx={{ display: "grid", gap: 1.5 }}>
-                <Typography variant="body2" color="text.secondary">
-                  No evaluation run for this meeting yet.
-                </Typography>
-                <Button variant="contained" onClick={runEvaluation} disabled={evaluating} startIcon={<Analytics />}>
+                <Typography variant="body2" color="text.secondary">No evaluation run for this meeting yet.</Typography>
+                <Button variant="contained" size="small" startIcon={<Analytics />} onClick={runEvaluation} disabled={evaluating}>
                   {evaluating ? "Running..." : "Run evaluation"}
                 </Button>
               </Box>
@@ -691,117 +639,280 @@ function MetricsView({ metadata, latestEvaluation, runEvaluation, evaluating }) 
   );
 }
 
-function AnalyticsView({ processingRows, evaluationRows, taskComparison }) {
-  const topEvaluations = evaluationRows.slice(0, 12).reverse();
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN APP
+// ─────────────────────────────────────────────────────────────────────────────
+export default function App() {
+  const [meetings, setMeetings] = useState([]);
+  const [selectedMeeting, setSelectedMeeting] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadPct, setUploadPct] = useState(0);
+  const [processingStatus, setProcessingStatus] = useState("");
+  const [recentMetrics, setRecentMetrics] = useState([]);
+  const [evaluations, setEvaluations] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [error, setError] = useState(null);
+  const [evaluating, setEvaluating] = useState(false);
+  const [evalMsg, setEvalMsg] = useState("");
+  const [topTab, setTopTab] = useState("meetings");
+  const [meetingTab, setMeetingTab] = useState("transcript");
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadAll = useCallback(async (preferredId = null) => {
+    setRefreshing(true);
+    try {
+      const [metricsR, evalR, meetingsR, statsR] = await Promise.all([
+        getRecentMetrics(50).catch(() => ({ metrics: [] })),
+        getEvaluations(20).catch(() => ({ evaluations: [] })),
+        getMeetings(20).catch(() => ({ meetings: [] })),
+        getStats().catch(() => null),
+      ]);
+      const list = meetingsR.meetings || [];
+      setRecentMetrics(metricsR.metrics || []);
+      setEvaluations(evalR.evaluations || []);
+      setMeetings(list);
+      if (statsR) setStats(statsR);
+
+      if (preferredId) {
+        const cur = list.find((m) => getMeetingId(m) === preferredId);
+        if (cur) { setSelectedMeeting(cur); setRefreshing(false); return; }
+      }
+      setSelectedMeeting((prev) => (!prev && list.length ? list[0] : prev));
+    } catch { /* ignore */ } finally { setRefreshing(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  const handleUpload = async (file) => {
+    setUploading(true);
+    setUploadPct(0);
+    setError(null);
+    setProcessingStatus("Uploading file...");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const { meeting_id } = await uploadMeeting(fd, (p) => setUploadPct(Math.round((p / 100) * 5)));
+      setUploadPct(5);
+      setProcessingStatus("Processing started...");
+
+      let iv = null;
+      const poll = async () => {
+        try {
+          const prog = await getMeetingProgress(meeting_id);
+          setUploadPct(5 + Math.round((prog.progress ?? 0) * 0.95));
+          setProcessingStatus(prog.message || prog.current_stage || "");
+          if (prog.status === "completed") {
+            clearInterval(iv);
+            const data = await getMeeting(meeting_id);
+            setSelectedMeeting(data);
+            setMeetings((prev) => [data, ...prev.filter((m) => getMeetingId(m) !== meeting_id)]);
+            setUploading(false);
+            setTimeout(() => { setUploadPct(0); setProcessingStatus(""); }, 1200);
+            loadAll(meeting_id);
+          } else if (prog.status === "failed") {
+            clearInterval(iv);
+            setError(prog.message || "Processing failed");
+            setUploading(false);
+            setProcessingStatus("");
+          }
+        } catch (err) {
+          clearInterval(iv);
+          setError(err.response?.data?.detail || "Polling error");
+          setUploading(false);
+          setProcessingStatus("");
+        }
+      };
+      iv = setInterval(poll, 1500);
+      await poll();
+    } catch (err) {
+      setError(err.response?.data?.detail || "Upload failed");
+      setUploading(false);
+      setProcessingStatus("");
+    }
+  };
+
+  const exportData = async (fmt) => {
+    const id = getMeetingId(selectedMeeting);
+    if (!id) return;
+    try {
+      const blob = await exportMeeting(id, fmt);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `meeting-${id}.${fmt}`; a.click();
+      URL.revokeObjectURL(url);
+    } catch { setError("Export failed"); }
+  };
+
+  const runEvaluation = async () => {
+    const id = getMeetingId(selectedMeeting);
+    if (!id) return;
+    setEvaluating(true);
+    setEvalMsg("Running evaluation...");
+    try {
+      const res = await evaluateMeeting(id);
+      setEvalMsg(`Evaluation completed: ${safeN(res.overall_quality_score, 1)}/100`);
+      await loadAll(id);
+    } catch (err) {
+      setError(err.response?.data?.detail || "Evaluation failed");
+    } finally {
+      setEvaluating(false);
+      setTimeout(() => setEvalMsg(""), 3000);
+    }
+  };
+
+  const selectedId = getMeetingId(selectedMeeting);
+  const meta = selectedMeeting?.metadata || {};
+  const segments = selectedMeeting?.segments || [];
+  const tasks = selectedMeeting?.tasks || [];
+  const transcript = selectedMeeting?.meeting?.transcript || selectedMeeting?.transcript || "";
+  const aliases = meta?.speaker_aliases || {};
+  const latestEval = useMemo(
+    () => evaluations.find((r) => r.meeting_id === selectedId) || null,
+    [evaluations, selectedId]
+  );
 
   return (
-    <Grid container spacing={3}>
-      <Grid item xs={12} md={6}>
-        <Card variant="outlined">
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Latency by meeting
-            </Typography>
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={processingRows}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="meeting_id" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Area type="monotone" dataKey="transcribe" stackId="1" fill="#1976d2" stroke="#1976d2" name="Transcribe" />
-                <Area type="monotone" dataKey="task" stackId="1" fill="#9c27b0" stroke="#9c27b0" name="Task" />
-                <Area type="monotone" dataKey="assign" stackId="1" fill="#2e7d32" stroke="#2e7d32" name="Assign" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </Grid>
+    <ThemeProvider theme={theme}>
+      <Box sx={{ bgcolor: "background.default", minHeight: "100vh" }}>
+        <Container maxWidth="xl" sx={{ py: 3 }}>
+          {/* Header */}
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <Box sx={{ bgcolor: "primary.main", borderRadius: 2, p: 0.75, display: "flex" }}>
+                <RecordVoiceOver sx={{ color: "#0d1117", fontSize: 22 }} />
+              </Box>
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1 }}>Meeting Secretary</Typography>
+                <Typography variant="caption" color="text.secondary">AI transcription · task extraction · analytics</Typography>
+              </Box>
+            </Box>
+            <Box sx={{ display: "flex", gap: 1 }}>
+              <Button component="label" variant="contained" startIcon={<Upload />} disabled={uploading} size="small">
+                Upload audio
+                <input hidden type="file" accept="audio/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ""; }} />
+              </Button>
+              <Button variant="outlined" startIcon={<Refresh />} size="small" onClick={() => loadAll(selectedId)} disabled={refreshing}>
+                Refresh
+              </Button>
+            </Box>
+          </Box>
 
-      <Grid item xs={12} md={6}>
-        <Card variant="outlined">
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Evaluation score trend
-            </Typography>
-            <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={topEvaluations}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="run" />
-                <YAxis domain={[0, 100]} />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="overall" stroke="#1976d2" name="Overall" strokeWidth={2} />
-                <Line type="monotone" dataKey="f1" stroke="#2e7d32" name="Task F1" strokeWidth={2} />
-                <Line type="monotone" dataKey="wer" stroke="#d32f2f" name="WER" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </Grid>
+          {uploading && (
+            <Paper sx={{ p: 2, mb: 3 }}>
+              <Typography variant="subtitle2" gutterBottom>{processingStatus || "Processing..."}</Typography>
+              <LinearProgress variant="determinate" value={uploadPct} sx={{ mb: 0.5 }} />
+              <Typography variant="caption" color="text.secondary">{uploadPct}%</Typography>
+            </Paper>
+          )}
 
-      <Grid item xs={12} md={6}>
-        <Card variant="outlined">
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Predicted vs gold tasks
-            </Typography>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={taskComparison}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="value">
-                  {taskComparison.map((entry, idx) => (
-                    <Cell key={entry.name} fill={METRIC_PALETTE[idx % METRIC_PALETTE.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </Grid>
+          {evalMsg && <Alert severity="success" sx={{ mb: 3 }}>{evalMsg}</Alert>}
 
-      <Grid item xs={12} md={6}>
-        <Card variant="outlined">
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Evaluation runs summary
-            </Typography>
-            {evaluationRows.length ? (
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Run</TableCell>
-                      <TableCell>Provider</TableCell>
-                      <TableCell>Parse</TableCell>
-                      <TableCell align="right">Score</TableCell>
-                      <TableCell align="right">F1</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {evaluationRows.slice(0, 8).map((row) => (
-                      <TableRow key={row.run}>
-                        <TableCell>{row.run}</TableCell>
-                        <TableCell>{row.provider}</TableCell>
-                        <TableCell>{row.parse}</TableCell>
-                        <TableCell align="right">{safeNumber(row.overall, 1)}</TableCell>
-                        <TableCell align="right">{safeNumber(row.f1, 3)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            ) : (
-              <Typography variant="body2" color="text.secondary">
-                No evaluation data yet.
-              </Typography>
-            )}
-          </CardContent>
-        </Card>
-      </Grid>
-    </Grid>
+          {/* Top tabs */}
+          <Box sx={{ borderBottom: 1, borderColor: "divider", mb: 3 }}>
+            <Tabs value={topTab} onChange={(_, v) => setTopTab(v)}>
+              <Tab label="Meetings" value="meetings" icon={<EventNote />} iconPosition="start" />
+              <Tab label="Dashboard" value="dashboard" icon={<DashboardIcon />} iconPosition="start" />
+            </Tabs>
+          </Box>
+
+          {/* Dashboard */}
+          {topTab === "dashboard" && (
+            <DashboardPage
+              metrics={recentMetrics}
+              evaluations={evaluations}
+              meetings={meetings}
+              stats={stats}
+              onRefresh={() => loadAll(selectedId)}
+              refreshing={refreshing}
+            />
+          )}
+
+          {/* Meetings */}
+          {topTab === "meetings" && (
+            <Grid container spacing={3}>
+              {/* Sidebar */}
+              <Grid item xs={12} md={3}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="overline" sx={{ color: "text.secondary", fontSize: "0.65rem", letterSpacing: 1, fontWeight: 700 }}>
+                    Meetings ({meetings.length})
+                  </Typography>
+                  <List dense sx={{ maxHeight: 680, overflow: "auto", mt: 1 }}>
+                    {meetings.map((m) => {
+                      const id = getMeetingId(m);
+                      const status = m?.metadata?.status || "completed";
+                      return (
+                        <ListItem key={id} disablePadding sx={{ mb: 0.5 }}>
+                          <ListItemButton selected={id === selectedId} onClick={() => { setSelectedMeeting(m); setMeetingTab("transcript"); }} sx={{ borderRadius: 1 }}>
+                            <ListItemText
+                              primary={
+                                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                                  <Typography variant="body2" sx={{ fontWeight: 700 }}>#{id}</Typography>
+                                  <StatusDot status={status} />
+                                </Box>
+                              }
+                              secondary={<Typography variant="caption" color="text.secondary">{formatDate(m?.meeting?.created_at || m?.metadata?.created_at)}</Typography>}
+                            />
+                          </ListItemButton>
+                        </ListItem>
+                      );
+                    })}
+                    {!meetings.length && <Typography variant="body2" color="text.secondary" sx={{ px: 1, py: 2, textAlign: "center" }}>No meetings yet</Typography>}
+                  </List>
+                </Paper>
+              </Grid>
+
+              {/* Main */}
+              <Grid item xs={12} md={9}>
+                {selectedMeeting ? (
+                  <Paper sx={{ mb: 3 }}>
+                    <Box sx={{ borderBottom: 1, borderColor: "divider", px: 2, py: 0.5, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <Tabs value={meetingTab} onChange={(_, v) => setMeetingTab(v)} variant="scrollable">
+                        <Tab label="Transcript" value="transcript" icon={<Timeline />} iconPosition="start" />
+                        <Tab label="Tasks" value="tasks" icon={<Assessment />} iconPosition="start" />
+                        <Tab label="Metrics" value="metrics" icon={<BarChartIcon />} iconPosition="start" />
+                      </Tabs>
+                      <Box sx={{ display: "flex", gap: 0.5 }}>
+                        {["json", "csv", "md", "txt"].map((fmt) => (
+                          <MuiTooltip key={fmt} title={`Export ${fmt.toUpperCase()}`}>
+                            <IconButton size="small" onClick={() => exportData(fmt)}>
+                              <Download sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </MuiTooltip>
+                        ))}
+                      </Box>
+                    </Box>
+                    <Box sx={{ p: 3 }}>
+                      {meetingTab === "transcript" && <TranscriptView segments={segments} transcript={transcript} metadata={meta} speakerAliases={aliases} />}
+                      {meetingTab === "tasks" && <TasksView tasks={tasks} />}
+                      {meetingTab === "metrics" && <MetricsView metadata={meta} latestEvaluation={latestEval} runEvaluation={runEvaluation} evaluating={evaluating} />}
+                    </Box>
+                  </Paper>
+                ) : (
+                  <Paper sx={{ p: 8, textAlign: "center" }}>
+                    <RecordVoiceOver sx={{ fontSize: 56, color: "text.secondary", opacity: 0.3, mb: 2 }} />
+                    <Typography variant="h6" color="text.secondary">Upload an audio file to get started</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Supports MP3, WAV, M4A, OGG and more</Typography>
+                  </Paper>
+                )}
+
+                <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                  <Button variant="outlined" size="small" startIcon={<EventNote />} onClick={runEvaluation} disabled={!selectedMeeting || evaluating}>
+                    {evaluating ? "Running..." : "Run evaluation"}
+                  </Button>
+                  <Button variant="outlined" size="small" startIcon={<Refresh />} onClick={() => loadAll(selectedId)} disabled={!selectedMeeting}>
+                    Reload meeting
+                  </Button>
+                </Box>
+              </Grid>
+            </Grid>
+          )}
+        </Container>
+
+        <Snackbar open={!!error} autoHideDuration={7000} onClose={() => setError(null)}>
+          <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>
+        </Snackbar>
+      </Box>
+    </ThemeProvider>
   );
 }

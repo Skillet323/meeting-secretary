@@ -18,9 +18,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./meeting_secretary.db"
 
     # ── Whisper ASR ──────────────────────────────────────────────────────────
-    WHISPER_MODEL: str = "small"          # tiny | base | small | medium | large-v3
-    WHISPER_DEVICE: str = "cpu"           # "cuda" | "cpu"
-    WHISPER_COMPUTE_TYPE: str = "float16" # float16 (GPU) | int8 (CPU)
+    WHISPER_MODEL: str = "small"         # tiny | base | small | medium | large-v3
+    WHISPER_DEVICE: str = "cpu"          # "cuda" | "cpu"
+    WHISPER_COMPUTE_TYPE: str = "int8"   # int8 (CPU, default) | float16 (GPU only)
 
     # ── Task extraction ───────────────────────────────────────────────────────
     # TASK_PROVIDER selects the extraction backend:

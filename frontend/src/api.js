@@ -49,13 +49,23 @@ export const getEvaluations = async (limit = 10) => {
   const response = await api.get(`/evaluations?limit=${limit}`);
   return response.data;
 };
+export const evaluateMeeting = async (id) => {
+  const response = await api.post(`/evaluate/meeting/${id}`);
+  return response.data;
+};
 
 export const getEvaluationDetails = async (runId) => {
   const response = await api.get(`/evaluation/${runId}`);
   return response.data;
 };
 
-export const evaluateMeeting = async (meetingId) => {
-  const response = await api.post(`/evaluate/meeting/${meetingId}`);
+export const getStats = async () => {
+  const response = await api.get("/stats");
   return response.data;
 };
+
+export const getParticipants = async () => {
+  const response = await api.get("/participants");
+  return response.data;
+};
+

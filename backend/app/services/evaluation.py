@@ -18,12 +18,14 @@ _STOPWORDS = {
     "he", "her", "him", "his", "i", "if", "in", "into", "is", "it", "its", "me", "my",
     "of", "on", "or", "our", "she", "so", "that", "the", "their", "them", "then", "there",
     "these", "they", "this", "to", "we", "were", "what", "when", "where", "which", "who",
-    "will", "with", "would", "you", "your", "the", "um", "uh", "okay", "right", "yeah",
+    "will", "with", "would", "you", "your", "um", "uh", "okay", "right", "yeah",
 }
 
+
 def _transcript_quality_score(wer: float, cer: float) -> float:
-    # simple conservative score in [0..100]
-    return max(0.0, 100.0 * (1.0 - (0.7 * wer + 0.3 * cer)))
+    """Return score in [0..1]."""
+    return max(0.0, 1.0 - (0.7 * wer + 0.3 * cer))
+
 
 def normalize_text(text: str) -> str:
     text = (text or "").lower()
@@ -85,14 +87,13 @@ def _best_match(pred_desc: str, gold_tasks: List[dict], used: set[int]) -> Tuple
     for i, gold in enumerate(gold_tasks):
         if i in used:
             continue
-        gold_desc = _task_desc(gold)
-        score = _sim(pred_desc, gold_desc)
+        score = _sim(pred_desc, _task_desc(gold))
         if score > best_score:
             best_idx, best_score = i, score
     return best_idx, best_score
 
+
 def evaluate_tasks(pred_tasks: List[dict], gold_tasks: List[dict]) -> Dict[str, Any]:
-    """Compute task-set precision/recall/F1 plus assignee/deadline accuracy."""
     pred_tasks = pred_tasks or []
     gold_tasks = gold_tasks or []
 
@@ -184,11 +185,10 @@ def _meeting_ref_candidates(meeting: Meeting) -> List[str]:
     if meeting.id is not None:
         candidates.append(str(meeting.id))
     if meeting.info:
-        # Sometimes the imported gold uses a source key.
         for key in ("source_key", "meeting_ref", "gold_ref"):
             if info.get(key):
                 candidates.append(str(info[key]))
-    # preserve order, unique
+
     out = []
     seen = set()
     for c in candidates:
@@ -196,6 +196,18 @@ def _meeting_ref_candidates(meeting: Meeting) -> List[str]:
             seen.add(c)
             out.append(c)
     return out
+
+
+def _load_gold_json_from_disk(candidate_refs: List[str], gold_dir: str = "gold_annotations") -> Optional[dict]:
+    base = Path(gold_dir)
+    for ref in candidate_refs:
+        path = base / f"{ref}.json"
+        if path.exists():
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+    return None
 
 
 def _find_gold_for_meeting(session: Session, meeting: Meeting) -> Optional[GoldStandard]:
@@ -206,10 +218,102 @@ def _find_gold_for_meeting(session: Session, meeting: Meeting) -> Optional[GoldS
     return None
 
 
+def _ensure_gold_for_meeting(session: Session, meeting: Meeting, gold_dir: str = "gold_annotations") -> Optional[GoldStandard]:
+    gold = _find_gold_for_meeting(session, meeting)
+    if gold:
+        return gold
+
+    disk_payload = _load_gold_json_from_disk(_meeting_ref_candidates(meeting), gold_dir=gold_dir)
+    if not disk_payload:
+        return None
+
+    meeting_ref = str(disk_payload.get("meeting_ref") or "").strip()
+    if not meeting_ref:
+        return None
+
+    existing = session.exec(select(GoldStandard).where(GoldStandard.meeting_ref == meeting_ref)).first()
+    if existing:
+        return existing
+
+    gold = GoldStandard(
+        meeting_ref=meeting_ref,
+        transcript=str(disk_payload.get("transcript") or ""),
+        transcript_source=disk_payload.get("transcript_source") or disk_payload.get("source", "manual"),
+        tasks_json=json.dumps(disk_payload.get("tasks", []), ensure_ascii=False),
+        audio_file_path=disk_payload.get("audio_file_path"),
+        language=disk_payload.get("language", "en"),
+        duration_sec=disk_payload.get("duration_sec"),
+        notes=disk_payload.get("notes"),
+    )
+    session.add(gold)
+    session.commit()
+    session.refresh(gold)
+    return gold
+
+
+def build_proxy_metrics(meeting: Meeting, session: Session) -> dict:
+    """Metrics that can be computed without gold annotation."""
+    meeting_info = json.loads(meeting.info) if meeting.info else {}
+    latest_metrics = session.exec(
+        select(ProcessingMetrics)
+        .where(ProcessingMetrics.meeting_id == meeting.id)
+        .order_by(ProcessingMetrics.created_at.desc())
+    ).first()
+
+    tasks = session.exec(select(Task).where(Task.meeting_id == meeting.id)).all()
+    assigned_count = sum(1 for t in tasks if t.assignee)
+    assignment_coverage = assigned_count / max(1, len(tasks))
+
+    transcript_confidence = meeting_info.get("transcript_confidence")
+    if transcript_confidence is None and latest_metrics:
+        transcript_confidence = latest_metrics.transcript_confidence
+
+    transcribe_latency = latest_metrics.transcribe_latency_sec if latest_metrics else None
+    task_latency = latest_metrics.task_latency_sec if latest_metrics else None
+    assign_latency = latest_metrics.assign_latency_sec if latest_metrics else None
+    total_latency = latest_metrics.total_latency_sec if latest_metrics else None
+
+    proxy_score = 100.0 * (
+        0.30 * float(transcript_confidence or 0.0) +
+        0.20 * max(0.0, 1.0 - min((task_latency or 0.0) / 10.0, 1.0)) +
+        0.20 * max(0.0, 1.0 - min((transcribe_latency or 0.0) / 600.0, 1.0)) +
+        0.15 * assignment_coverage +
+        0.15 * (0.0 if meeting_info.get("task_fallback_used") else 1.0)
+    )
+
+    return {
+        "mode": "proxy",
+        "meeting_id": meeting.id,
+        "created_at": meeting.created_at.isoformat() if meeting.created_at else None,
+        "audio_size_bytes": latest_metrics.audio_size_bytes if latest_metrics else meeting_info.get("audio_size_bytes"),
+        "audio_duration_sec": latest_metrics.audio_duration_sec if latest_metrics else meeting_info.get("audio_duration_sec"),
+        "transcribe_latency_sec": transcribe_latency,
+        "task_latency_sec": task_latency,
+        "assign_latency_sec": assign_latency,
+        "total_latency_sec": total_latency,
+        "transcript_confidence": transcript_confidence,
+        "segments_count": latest_metrics.segments_count if latest_metrics else meeting_info.get("segments_count"),
+        "tasks_count": len(tasks),
+        "assigned_tasks_count": assigned_count,
+        "assignment_coverage": assignment_coverage,
+        "language": latest_metrics.language if latest_metrics else meeting_info.get("language"),
+        "model_whisper": latest_metrics.model_whisper if latest_metrics else meeting_info.get("model_whisper"),
+        "model_task": latest_metrics.model_task if latest_metrics else meeting_info.get("model_task"),
+        "has_diarization": meeting_info.get("has_diarization"),
+        "task_provider": meeting_info.get("task_provider"),
+        "task_model": meeting_info.get("task_model"),
+        "task_parse_stage": meeting_info.get("task_parse_stage"),
+        "task_fallback_used": meeting_info.get("task_fallback_used"),
+        "task_fallback_merged": meeting_info.get("task_fallback_merged"),
+        "proxy_quality_score": proxy_score,
+    }
+
+
 def evaluate_meeting(meeting: Meeting, session: Session) -> tuple[EvaluationRun, dict]:
     """Evaluate a processed meeting against the available gold standard."""
     meeting_info = json.loads(meeting.info) if meeting.info else {}
-    gold = _find_gold_for_meeting(session, meeting)
+
+    gold = _ensure_gold_for_meeting(session, meeting)
     if not gold:
         raise ValueError(f"No gold standard found for meeting candidates={_meeting_ref_candidates(meeting)}")
 
@@ -230,7 +334,6 @@ def evaluate_meeting(meeting: Meeting, session: Session) -> tuple[EvaluationRun,
     ]
 
     wer, cer = evaluate_transcription(gold.transcript, meeting.transcript or "")
-    
     task_metrics = evaluate_tasks(pred_task_dicts, gold_tasks)
 
     assign_acc = float(task_metrics.get("assignee_accuracy") or 0.0)
@@ -238,7 +341,6 @@ def evaluate_meeting(meeting: Meeting, session: Session) -> tuple[EvaluationRun,
     task_f1 = float(task_metrics.get("task_set_f1", 0.0))
     transcript_quality = _transcript_quality_score(wer, cer)
 
-    # A blended score that does not collapse to zero when task matching is still immature.
     overall = (transcript_quality * 0.45 + task_f1 * 0.35 + assign_acc * 0.10 + deadline_acc * 0.10) * 100.0
 
     latest_metrics = session.exec(

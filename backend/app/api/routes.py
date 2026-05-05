@@ -12,18 +12,22 @@ from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlmodel import Session, select
-from ..db import init_db, get_session, engine
+from ..db import get_session, engine
 from ..config import settings
 from ..models import Meeting, Task, Participant, Rule, ProcessingMetrics
 from ..services.transcription import transcribe_from_bytes as transcribe
 from ..services.task_extraction import extract_tasks as extract
 from ..services.assignment_engine import assign_tasks_to_participants as assign
 import logging
+from pydantic import BaseModel
+from ..services.evaluation import build_proxy_metrics
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-
+class SpeakerAliasesPayload(BaseModel):
+    aliases: dict[str, str]
+    
 def _serialize_meeting(session: Session, meeting_id: int) -> dict:
     meeting = session.get(Meeting, meeting_id)
     if not meeting:
@@ -229,11 +233,6 @@ async def _process_meeting_background(meeting_id: int, audio_source: str, filena
                 pass
 
 
-@router.on_event("startup")
-def on_startup():
-    init_db()
-
-
 # === Health & Metrics ===
 @router.get("/health")
 def health():
@@ -272,6 +271,108 @@ def get_metrics(limit: int = Query(10, ge=1, le=100), session: Session = Depends
             }
             for m in metrics
         ]
+    }
+
+@router.patch("/meeting/{meeting_id}/speaker-aliases")
+def update_speaker_aliases(
+    meeting_id: int,
+    payload: SpeakerAliasesPayload,
+    session: Session = Depends(get_session),
+):
+    meeting = session.get(Meeting, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+
+    info = json.loads(meeting.info) if meeting.info else {}
+    current_aliases = dict(info.get("speaker_aliases", {}) or {})
+    for speaker, name in payload.aliases.items():
+        speaker = str(speaker).strip()
+        name = str(name).strip()
+        if speaker and name:
+            current_aliases[speaker] = name
+
+    info["speaker_aliases_manual"] = current_aliases
+    info["speaker_aliases"] = current_aliases
+    meeting.info = json.dumps(info, ensure_ascii=False)
+    session.add(meeting)
+
+    tasks = session.exec(select(Task).where(Task.meeting_id == meeting_id)).all()
+    task_dicts = [
+        {
+            "description": t.description,
+            "assignee_hint": t.assignee,
+            "deadline_hint": t.deadline,
+            "speaker_hint": None,
+            "source_snippet": None,
+            "raw": t.raw,
+        }
+        for t in tasks
+    ]
+
+    from ..services.assignment_engine import assign_tasks_to_participants
+
+    reassigned = assign_tasks_to_participants(task_dicts, session, meeting_info=info)
+    for db_task, new_task in zip(tasks, reassigned):
+        db_task.assignee = new_task.get("assignee")
+        db_task.raw = json.dumps(new_task, ensure_ascii=False)
+        session.add(db_task)
+
+    session.commit()
+    return {
+        "ok": True,
+        "meeting_id": meeting_id,
+        "speaker_aliases": current_aliases,
+        "reassigned_tasks": len(reassigned),
+    }
+    
+@router.get("/meeting/{meeting_id}/proxy-metrics")
+def get_proxy_metrics(meeting_id: int, session: Session = Depends(get_session)):
+    meeting = session.get(Meeting, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    return build_proxy_metrics(meeting, session)
+
+@router.get("/stats")
+def get_stats(session: Session = Depends(get_session)):
+    """Aggregated system-wide statistics for the dashboard."""
+    all_metrics = session.exec(select(ProcessingMetrics)).all()
+    all_meetings = session.exec(select(Meeting)).all()
+    all_tasks = session.exec(select(Task)).all()
+
+    total_meetings = len(all_meetings)
+    total_tasks = len(all_tasks)
+
+    if all_metrics:
+        avg_latency = sum(m.total_latency_sec for m in all_metrics) / len(all_metrics)
+        avg_confidence = sum((m.transcript_confidence or 0.0) for m in all_metrics) / len(all_metrics)
+        avg_tasks_per_meeting = sum(m.tasks_count for m in all_metrics) / len(all_metrics)
+        languages: dict = {}
+        for m in all_metrics:
+            lang = m.language or "unknown"
+            languages[lang] = languages.get(lang, 0) + 1
+        models: dict = {}
+        for m in all_metrics:
+            model = m.model_whisper or "unknown"
+            models[model] = models.get(model, 0) + 1
+    else:
+        avg_latency = avg_confidence = avg_tasks_per_meeting = 0.0
+        languages = {}
+        models = {}
+
+    return {
+        "total_meetings": total_meetings,
+        "total_tasks": total_tasks,
+        "avg_total_latency_sec": round(avg_latency, 2),
+        "avg_transcript_confidence": round(avg_confidence, 3),
+        "avg_tasks_per_meeting": round(avg_tasks_per_meeting, 1),
+        "language_distribution": [
+            {"name": k, "value": v}
+            for k, v in sorted(languages.items(), key=lambda x: -x[1])
+        ],
+        "model_distribution": [
+            {"name": k, "value": v}
+            for k, v in sorted(models.items(), key=lambda x: -x[1])
+        ],
     }
 
 
@@ -409,8 +510,10 @@ WEBHOOKS_FILE = os.path.join(os.path.dirname(__file__), "..", "..", "webhooks.js
 
 
 @router.post("/webhooks")
-def configure_webhook(url: str, events: list = ["meeting_completed"]):
+def configure_webhook(url: str, events: list = None):
     """Register a webhook URL to receive notifications."""
+    if events is None:
+        events = ["meeting_completed"]
     try:
         if os.path.exists(WEBHOOKS_FILE):
             with open(WEBHOOKS_FILE, "r") as f:

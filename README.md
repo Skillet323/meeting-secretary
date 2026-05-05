@@ -1,3 +1,13 @@
+---
+title: Meeting Secretary
+emoji: 📝
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_file: Dockerfile
+pinned: false
+---
+
 # Meeting Secretary
 
 Автоматическая расшифровка совещаний, извлечение задач и оценка качества.

@@ -1,0 +1,4 @@
+model,status,n_ok,n_total,avg_task_f1,avg_precision,avg_recall,avg_assignee_accuracy,avg_deadline_accuracy,avg_hallucination_rate,avg_predicted_tasks,avg_matched_tasks,avg_latency_sec,avg_raw_chars,n_rate_limited,n_forbidden,n_parse_failed,notes
+poolside/laguna-m.1:free,ok,1,13,1.0,1.0,1.0,0.5,0.0,0.0,2.0,2.0,22.15,684.0,0,0,12,
+inclusionai/ling-2.6-1t:free,ok,7,13,0.2573,0.244,0.2857,0.125,0.25,0.0,3.7143,0.7143,4.641,1591.4,0,0,6,
+openai/gpt-oss-120b:free,ok,3,13,0.2222,0.1667,0.3333,0.5,0.0,0.0,2.0,0.6667,17.222,431.7,0,0,10,

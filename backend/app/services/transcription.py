@@ -13,7 +13,6 @@ import math
 import os
 import re
 import tempfile
-from collections import defaultdict
 from typing import Any, Dict, List, Optional, Union
 
 import torch
@@ -26,7 +25,7 @@ from ..config import settings
 logger = logging.getLogger(__name__)
 
 _model = None
-_model_device = None
+_model_device: Optional[str] = None
 _model_dtype = None
 
 
@@ -70,26 +69,26 @@ def _normalize_speaker_label(label: Any) -> str:
         return f"SPEAKER_{int(m.group(1)):02d}"
     if text.lower().startswith("speaker") and m:
         return f"SPEAKER_{int(m.group(1)):02d}"
-    return text
+    return text or "Unknown"
 
 
-def merge_speakers(transcript_segments: List[Dict], speaker_segments: List[Dict]) -> List[Dict]:
+def merge_speakers(transcript_segments: List[Dict[str, Any]], speaker_segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Merge Whisper segments with diarization output using overlap matching."""
     if not speaker_segments:
         return transcript_segments
 
-    merged = []
+    merged: List[Dict[str, Any]] = []
     for ts in transcript_segments:
-        start = ts["start"]
-        end = ts["end"]
+        start = float(ts["start"])
+        end = float(ts["end"])
         best_speaker = None
         best_overlap = 0.0
         mid = (start + end) / 2
 
         for sp in speaker_segments:
-            s_start = sp.get("start", 0)
-            s_end = sp.get("end", 0)
-            overlap = max(0, min(end, s_end) - max(start, s_start))
+            s_start = float(sp.get("start", 0.0))
+            s_end = float(sp.get("end", 0.0))
+            overlap = max(0.0, min(end, s_end) - max(start, s_start))
             if overlap > best_overlap:
                 best_overlap = overlap
                 best_speaker = sp.get("speaker")
@@ -97,71 +96,106 @@ def merge_speakers(transcript_segments: List[Dict], speaker_segments: List[Dict]
         if best_speaker is None and speaker_segments:
             min_dist = float("inf")
             for sp in speaker_segments:
-                sp_mid = (sp.get("start", 0) + sp.get("end", 0)) / 2
+                sp_mid = (float(sp.get("start", 0.0)) + float(sp.get("end", 0.0))) / 2
                 dist = abs(mid - sp_mid)
                 if dist < min_dist:
                     min_dist = dist
                     best_speaker = sp.get("speaker")
 
-        ts_copy = ts.copy()
+        ts_copy = dict(ts)
         ts_copy["speaker"] = _normalize_speaker_label(best_speaker if best_speaker is not None else "Unknown")
         merged.append(ts_copy)
 
     return merged
 
 
+def _looks_like_person_name(candidate: str) -> bool:
+    candidate = (candidate or "").strip()
+    if not candidate:
+        return False
+
+    # Only accept explicit-looking names, not ordinary phrases.
+    if not re.fullmatch(r"[A-Z][a-z'\-]+(?:\s+[A-Z][a-z'\-]+){0,2}", candidate):
+        return False
+
+    bad_tokens = {
+        "getting", "going", "doing", "waking", "waking up", "shadow", "everything",
+        "problem", "meeting", "agenda", "project", "team", "design", "function",
+        "control", "system", "pain", "hurt", "this", "that", "there", "here",
+    }
+    low = candidate.lower()
+    return not any(tok in low for tok in bad_tokens)
+
+
+def _infer_speaker_aliases(segments: List[Dict[str, Any]]) -> dict[str, str]:
+    """Infer names from self-introductions in early diarized turns."""
+    aliases: dict[str, str] = {}
+
+    patterns = [
+        r"(?:i'm|i am|my name is|this is|name's)\s+([A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+)?)",
+        r"(?:i am)\s+([A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+)?)",
+    ]
+
+    for seg in segments[:40]:
+        speaker = _normalize_speaker_label(seg.get("speaker") or "Unknown")
+        text = str(seg.get("text") or "")
+        if speaker in aliases:
+            continue
+
+        for pat in patterns:
+            m = re.search(pat, text, flags=re.IGNORECASE)
+            if not m:
+                continue
+            candidate = m.group(1).strip()
+
+            # Reject phrases like "I am getting out"
+            if _looks_like_person_name(candidate) and len(candidate.split()) <= 3:
+                aliases[speaker] = candidate
+                break
+
+    return aliases
+
+
+def _apply_speaker_aliases(segments: List[Dict[str, Any]], alias_map: dict[str, str]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for seg in segments:
+        speaker = _normalize_speaker_label(seg.get("speaker") or "Unknown")
+        alias = alias_map.get(speaker)
+
+        item = dict(seg)
+        item["speaker_label"] = speaker
+        item["speaker_name"] = alias
+        item["speaker_display"] = alias or speaker
+        out.append(item)
+    return out
+
+
 def _segments_to_speaker_transcript(segments: List[Dict[str, Any]]) -> str:
     lines: List[str] = []
     last_speaker: Optional[str] = None
-    last_line: Optional[str] = None
 
     for seg in segments:
-        speaker = _normalize_speaker_label(seg.get("speaker") or "Unknown")
+        speaker = str(seg.get("speaker_display") or seg.get("speaker_name") or seg.get("speaker") or "Unknown").strip()
         text = str(seg.get("text") or "").strip()
         if not text:
             continue
 
         line = f"{speaker}: {text}"
         if speaker == last_speaker and lines:
-            lines[-1] = f"{last_line} {text}" if last_line else line
-            last_line = lines[-1]
+            lines[-1] = f"{lines[-1]} {text}"
         else:
             lines.append(line)
             last_speaker = speaker
-            last_line = line
+
     return "\n".join(lines).strip()
-
-
-def _infer_speaker_aliases(segments: List[Dict[str, Any]]) -> dict[str, str]:
-    """Infer names from self-introductions in early diarized turns."""
-    aliases: dict[str, str] = {}
-    patterns = [
-        r"(?:i'm|i am|my name is|this is)\s+([A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+)?)",
-        r"(?:i am)\s+([A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+)?)",
-    ]
-
-    for seg in segments[:40]:  # introductions typically happen early
-        speaker = _normalize_speaker_label(seg.get("speaker") or "Unknown")
-        text = str(seg.get("text") or "")
-        if speaker in aliases:
-            continue
-        for pat in patterns:
-            m = re.search(pat, text, flags=re.IGNORECASE)
-            if m:
-                candidate = m.group(1).strip()
-                if len(candidate.split()) <= 3:
-                    aliases[speaker] = candidate
-                    break
-
-    return aliases
 
 
 def transcribe_from_bytes(audio_source: Union[bytes, str], filename: Optional[str] = None) -> Dict[str, Any]:
     """
     Transcribe audio with preprocessing and optional diarization.
-    Returns text, segments, speaker_transcript, aliases, language, confidence and diarization flag.
     """
-    temp_wav = None
+    temp_wav: Optional[str] = None
+
     try:
         try:
             temp_wav = preprocess_audio(audio_source, filename)
@@ -179,19 +213,17 @@ def transcribe_from_bytes(audio_source: Union[bytes, str], filename: Optional[st
         model = get_model()
         use_fp16 = _model_device == "cuda" and _model_dtype == torch.float16
 
-        transcribe_kwargs = {
-            "audio": temp_wav,
-            "task": "transcribe",
-            "word_timestamps": True,
-            "temperature": 0.0,
-            "verbose": False,
-            "fp16": use_fp16,
-        }
-        result = model.transcribe(**transcribe_kwargs)
+        result = model.transcribe(
+            audio=temp_wav,
+            task="transcribe",
+            word_timestamps=True,
+            temperature=0.0,
+            verbose=False,
+            fp16=use_fp16,
+        )
 
-        segments: List[Dict[str, Any]] = []
-        total_confidence = 0.0
-        count = 0
+        whisper_segments: List[Dict[str, Any]] = []
+        confidences: List[float] = []
 
         for seg in result.get("segments", []):
             segment_data: Dict[str, Any] = {
@@ -202,66 +234,49 @@ def transcribe_from_bytes(audio_source: Union[bytes, str], filename: Optional[st
             conf = _segment_confidence(seg)
             if conf is not None:
                 segment_data["confidence"] = conf
-                total_confidence += conf
-                count += 1
-            segments.append(segment_data)
+                confidences.append(conf)
+            whisper_segments.append(segment_data)
 
-        output: Dict[str, Any] = {
-            "text": str(result.get("text", "")).strip(),
-            "language": result.get("language"),
-            "segments": segments,
-            "confidence": total_confidence / count if count > 0 else None,
-            "has_diarization": False,
-            "speaker_transcript": None,
-            "speaker_aliases": {},
-        }
+        merged_segments = whisper_segments
+        has_diarization = False
 
-        # IMPORTANT: diarization must happen before temp file cleanup
         if settings.DIARIZATION_ENABLED and temp_wav and os.path.exists(temp_wav):
             try:
                 logger.info("[TRANSCRIPTION] Starting diarization...")
                 speaker_segments = diarize_audio(temp_wav)
                 if speaker_segments:
-                    output["segments"] = merge_speakers(output["segments"], speaker_segments)
-                    output["has_diarization"] = True
-                    output["speaker_transcript"] = _segments_to_speaker_transcript(output["segments"])
-                    output["speaker_aliases"] = _infer_speaker_aliases(output["segments"])
+                    merged_segments = merge_speakers(whisper_segments, speaker_segments)
+                    has_diarization = True
                     logger.info("[TRANSCRIPTION] Diarization complete: %d speaker segments", len(speaker_segments))
                 else:
                     logger.warning("[TRANSCRIPTION] Diarization returned no segments")
             except Exception as e:
                 logger.error("[TRANSCRIPTION] Diarization failed: %s", e, exc_info=True)
 
-        if not output["speaker_transcript"]:
-            if output["has_diarization"]:
-                output["speaker_transcript"] = _segments_to_speaker_transcript(output["segments"]) or output["text"]
-            else:
-                output["speaker_transcript"] = output["text"]
-
-        logger.info(
-            "[TRANSCRIPTION] Completed: %d segments, language=%s, confidence=%s",
-            len(output["segments"]),
-            output["language"],
-            output["confidence"],
-        )
-                # Infer speaker aliases only from explicit self-introductions.
         speaker_aliases = _infer_speaker_aliases(merged_segments)
-        speaker_transcript = _segments_to_speaker_transcript(merged_segments)
+        enriched_segments = _apply_speaker_aliases(merged_segments, speaker_aliases)
+        speaker_transcript = _segments_to_speaker_transcript(enriched_segments) or str(result.get("text", "")).strip()
 
-        confidence_values = [
-            c for c in (_segment_confidence(seg) for seg in merged_segments) if c is not None
-        ]
-        confidence = float(sum(confidence_values) / len(confidence_values)) if confidence_values else None
+        confidence = float(sum(confidences) / len(confidences)) if confidences else None
 
-        return {
-            "text": final_text.strip(),
+        output: Dict[str, Any] = {
+            "text": str(result.get("text", "")).strip(),
             "language": result.get("language") or "en",
-            "segments": merged_segments,
+            "segments": enriched_segments,
             "speaker_transcript": speaker_transcript,
             "speaker_aliases": speaker_aliases,
             "confidence": confidence,
-            "has_diarization": bool(diarization_segments),
+            "has_diarization": has_diarization,
         }
+
+        logger.info(
+            "[TRANSCRIPTION] Completed: %d segments, language=%s, confidence=%s, diarization=%s",
+            len(enriched_segments),
+            output["language"],
+            output["confidence"],
+            output["has_diarization"],
+        )
+
         return output
 
     finally:
